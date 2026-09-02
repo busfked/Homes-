@@ -17,9 +17,11 @@ import {
   Phone,
   PlusCircle,
   KeyRound,
-  Headphones
+  Headphones,
+  User,
+  PackageCheck
 } from 'lucide-react';
-import { Language, CategoryType, PropertyType, ListingType } from '../types';
+import { Language, CategoryType, PropertyType, ListingType, UserAccount } from '../types';
 import { ADDIS_AREAS, PROPERTY_TYPES } from '../data/addisAreas';
 import { translations } from '../data/translations';
 
@@ -45,6 +47,9 @@ interface WelcomeDashboardProps {
   totalListingsCount: number;
   onPostHouseClick: () => void;
   onOpenOwnerManage?: () => void;
+  currentUser?: UserAccount | null;
+  onOpenUserAuthModal?: () => void;
+  onOpenBuyPackage?: () => void;
 }
 
 export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
@@ -69,6 +74,9 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
   totalListingsCount,
   onPostHouseClick,
   onOpenOwnerManage,
+  currentUser,
+  onOpenUserAuthModal,
+  onOpenBuyPackage,
 }) => {
   const t = translations[currentLang];
 
@@ -77,17 +85,24 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
     'all',
     'bole',
     'gerji',
-    'bulbula',
-    'megenagna',
     'cmc',
     'ayat',
     'summit',
+    'megenagna',
+    'atenatera',
+    'shegole',
+    'welete',
+    'abuare',
+    'ayer_tena',
+    'kotebe',
+    'ferensay',
     'sarbet',
-    'kazanchis',
-    'piassa',
     'lebu',
     'jemo',
-    'gotera',
+    'gofa',
+    'piassa',
+    'kazanchis',
+    'kality',
   ];
 
   return (
@@ -136,42 +151,114 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
           </div>
         </div>
 
-        {/* OWNER DIRECT ALL-IN-ONE CARD (No extra hidden tabs or pulling right) */}
-        <div className="mb-6 p-4 sm:p-5 bg-gradient-to-r from-emerald-600 via-emerald-700 to-stone-900 text-white rounded-3xl shadow-lg border border-emerald-400/30 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="space-y-1 text-center md:text-left">
-            <div className="flex items-center justify-center md:justify-start gap-2">
-              <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[11px] font-black uppercase tracking-wider backdrop-blur-xs">
-                {currentLang === 'am' ? 'ለባለቤቶች • For Owners' : 'For Owners'}
-              </span>
-              <h3 className="font-black text-base sm:text-lg text-white">
-                {t.ownerPostBannerTitle}
+        {/* DUAL PORTALS: OWNER / SELLER & FINDER / RENTER REGISTRATION & LOGIN */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* 1. OWNER & SELLER PORTAL */}
+          <div className="p-5 bg-gradient-to-br from-emerald-700 via-emerald-850 to-stone-900 text-white rounded-3xl shadow-lg border border-emerald-400/30 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="px-3 py-1 rounded-full bg-white/20 text-white text-[11px] font-black uppercase tracking-wider backdrop-blur-xs flex items-center gap-1.5">
+                  <Home className="w-3.5 h-3.5" />
+                  <span>{currentLang === 'am' ? 'የአከራይና ሻጮች ፖርታል' : 'Owner & Seller Portal'}</span>
+                </span>
+                <span className="text-[11px] text-emerald-200 font-bold bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                  {currentLang === 'am' ? '150 - 500 ብር መለጠፊያ' : '150 - 500 ETB Listing'}
+                </span>
+              </div>
+              <h3 className="font-black text-lg sm:text-xl text-white">
+                {currentLang === 'am' ? 'ቤት፣ መኪና ወይም ማሽነሪ ያከራዩ / ይሽጡ' : 'Post & Rent / Sell Your Property'}
               </h3>
+              <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+                {currentLang === 'am'
+                  ? 'ማስታወቂያዎን በደቂቃዎች ውስጥ ይለጥፉ፣ ፎቶዎች በትንሽ ዳታ ይጨመቃሉ። የቀደሙትን በፒን ቁጥርዎ ያስተዳድሩ።'
+                  : 'Post your verified property in minutes. Manage status, renew for 7 days or mark as occupied with your PIN.'}
+              </p>
             </div>
-            <p className="text-xs sm:text-sm text-emerald-100 max-w-xl leading-relaxed">
-              {t.ownerPostBannerDesc}
-            </p>
+
+            <div className="mt-5 grid grid-cols-2 gap-2.5">
+              <button
+                id="owner-portal-post-btn"
+                onClick={onPostHouseClick}
+                className="py-2.5 px-3 bg-white hover:bg-stone-100 active:scale-98 text-emerald-950 font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{currentLang === 'am' ? 'ማስታወቂያ ለጥፍ' : 'Post Listing'}</span>
+              </button>
+
+              {onOpenOwnerManage && (
+                <button
+                  id="owner-portal-manage-btn"
+                  onClick={onOpenOwnerManage}
+                  className="py-2.5 px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4 shrink-0" />
+                  <span>{currentLang === 'am' ? 'የባለቤት መግቢያ' : 'Owner Login'}</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-2.5 w-full sm:w-auto shrink-0">
-            <button
-              id="owner-quick-post-btn"
-              onClick={onPostHouseClick}
-              className="flex-1 sm:flex-initial py-2.5 px-5 bg-white hover:bg-stone-100 text-emerald-900 font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4 text-emerald-600" />
-              <span>{t.ownerPostBannerBtn}</span>
-            </button>
+          {/* 2. FINDER & BUYER PORTAL */}
+          <div className="p-5 bg-gradient-to-br from-indigo-900 via-stone-900 to-stone-950 text-white rounded-3xl shadow-lg border border-indigo-400/30 flex flex-col justify-between">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="px-3 py-1 rounded-full bg-indigo-500/30 text-indigo-200 text-[11px] font-black uppercase tracking-wider backdrop-blur-xs flex items-center gap-1.5 border border-indigo-400/30">
+                  <User className="w-3.5 h-3.5" />
+                  <span>{currentLang === 'am' ? 'የፈላጊዎች ፖርታል' : 'Finder & Buyer Portal'}</span>
+                </span>
+                {currentUser ? (
+                  <span className="text-[11px] text-emerald-300 font-bold bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>{currentUser.name} ({currentUser.packages?.reduce((sum, p) => sum + p.remainingUnlocks, 0) || 0} {currentLang === 'am' ? 'ክሬዲት' : 'Credits'})</span>
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-indigo-300 font-bold bg-indigo-950/60 px-2 py-0.5 rounded-lg border border-indigo-500/20">
+                    {currentLang === 'am' ? 'የ5 ቤት ፓኬጅ በ 150 ብር' : '5-House Pack 150 ETB'}
+                  </span>
+                )}
+              </div>
+              <h3 className="font-black text-lg sm:text-xl text-white">
+                {currentLang === 'am' ? 'የቤት ወይም የመኪና ፈላጊ መግቢያ / ምዝገባ' : 'Finder Login & 5-Unlock Packages'}
+              </h3>
+              <p className="text-xs sm:text-sm text-stone-300 leading-relaxed">
+                {currentLang === 'am'
+                  ? 'በስልክዎ ይመዝገቡ፤ የ5 ቤት እውቂያ ፓኬጅ ይግዙ። የተከፈቱ የባለቤት ስልኮች ለአካውንትዎ ብቻ ሚስጥራዊ ሆነው ይቀመጣሉ።'
+                  : 'Register with phone & PIN. Buy 5-house packages to view owner direct contacts privately in your account.'}
+              </p>
+            </div>
 
-            {onOpenOwnerManage && (
-              <button
-                id="owner-quick-manage-btn"
-                onClick={onOpenOwnerManage}
-                className="py-2.5 px-4 bg-white/15 hover:bg-white/25 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>{t.ownerManageBannerBtn}</span>
-              </button>
-            )}
+            <div className="mt-5 grid grid-cols-2 gap-2.5">
+              {onOpenUserAuthModal && (
+                <button
+                  id="finder-portal-auth-btn"
+                  onClick={onOpenUserAuthModal}
+                  className="py-2.5 px-3 bg-indigo-500 hover:bg-indigo-600 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <User className="w-4 h-4 shrink-0" />
+                  <span>{currentUser ? (currentLang === 'am' ? 'አካውንቴን ክፈት' : 'My Account') : (currentLang === 'am' ? 'መግቢያ / ምዝገባ' : 'Login / Register')}</span>
+                </button>
+              )}
+
+              {onOpenBuyPackage ? (
+                <button
+                  id="finder-portal-package-btn"
+                  onClick={onOpenBuyPackage}
+                  className="py-2.5 px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <PackageCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{currentLang === 'am' ? 'የ5 ቤት ፓኬጅ' : '5-Pack Credit'}</span>
+                </button>
+              ) : (
+                <button
+                  id="finder-portal-package-btn-fallback"
+                  onClick={onOpenUserAuthModal}
+                  className="py-2.5 px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <PackageCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{currentLang === 'am' ? 'ክሬዲት ይግዙ' : 'Get Credits'}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

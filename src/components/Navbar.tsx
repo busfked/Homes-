@@ -9,9 +9,11 @@ import {
   KeyRound, 
   Receipt, 
   Sun, 
-  Moon 
+  Moon,
+  User,
+  Sparkles
 } from 'lucide-react';
-import { Language, Theme } from '../types';
+import { Language, Theme, UserAccount } from '../types';
 import { translations } from '../data/translations';
 
 interface NavbarProps {
@@ -23,7 +25,9 @@ interface NavbarProps {
   setActiveTab: (tab: 'browse' | 'post' | 'owner' | 'my-requests' | 'admin') => void;
   pendingApprovalsCount: number;
   userPhone: string;
+  currentUser?: UserAccount | null;
   onOpenUserPhoneModal: () => void;
+  onOpenUserAuthModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -35,7 +39,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   pendingApprovalsCount,
   userPhone,
+  currentUser,
   onOpenUserPhoneModal,
+  onOpenUserAuthModal,
 }) => {
   const t = translations[currentLang];
 
@@ -200,6 +206,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span>EN</span>
               </button>
             </div>
+
+            {/* User Account / Login Button */}
+            {onOpenUserAuthModal && (
+              <button
+                id="btn-user-auth"
+                onClick={onOpenUserAuthModal}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  currentUser
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-300 shadow-2xs'
+                    : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-200'
+                }`}
+                title={currentUser ? currentUser.name : (currentLang === 'am' ? 'ግባ / ተመዝገብ' : 'Login / Register')}
+              >
+                <User className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span className="hidden sm:inline max-w-24 truncate">
+                  {currentUser ? currentUser.name : (currentLang === 'am' ? 'ግባ' : 'Login')}
+                </span>
+                {currentUser?.packages && currentUser.packages.length > 0 && (
+                  <span className="bg-emerald-600 text-white text-[10px] px-1.5 py-0.2 rounded-full font-mono">
+                    {currentUser.packages.reduce((sum, p) => sum + p.remainingUnlocks, 0)}
+                  </span>
+                )}
+              </button>
+            )}
 
             {/* Post Listing Call To Action Button (Mobile/Tablet Highlight) */}
             <button

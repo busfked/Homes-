@@ -22,9 +22,10 @@ import {
   Layers,
   ShieldAlert
 } from 'lucide-react';
-import { Property, Language } from '../types';
+import { Property, Language, UserAccount } from '../types';
 import { translations } from '../data/translations';
 import { getDaysRemaining } from '../utils/storage';
+import { formatEtbPrice } from '../utils/pricing';
 import { PROPERTY_TYPES, CAR_TYPES, MACHINERY_TYPES } from '../data/addisAreas';
 
 interface HouseDetailModalProps {
@@ -33,6 +34,8 @@ interface HouseDetailModalProps {
   onClose: () => void;
   currentLang: Language;
   isUnlocked: boolean;
+  currentUser?: UserAccount | null;
+  onUseCreditToUnlock?: (property: Property) => void;
   onOpenUnlockModal: (property: Property) => void;
   onOpenOwnerPortalForThisHouse: (property: Property) => void;
   onOpenReportModal?: (property: Property) => void;
@@ -44,6 +47,8 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
   onClose,
   currentLang,
   isUnlocked,
+  currentUser,
+  onUseCreditToUnlock,
   onOpenUnlockModal,
   onOpenOwnerPortalForThisHouse,
   onOpenReportModal,
@@ -57,6 +62,11 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
   const { days, hours, isExpired } = getDaysRemaining(property.expiresAt);
 
   const category = property.category || 'home';
+
+  // Check if current logged in user has credits for this house
+  const matchingPackage = currentUser?.packages?.find(
+    (p) => p.status === 'active' && p.remainingUnlocks > 0 && property.price <= p.maxHousePrice
+  );
 
   // Determine sub-type label
   let typeLabel = '';
@@ -161,13 +171,16 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
               </h2>
             </div>
 
-            <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 p-3 sm:p-4 rounded-2xl sm:text-right shrink-0">
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/80 p-3.5 sm:p-4 rounded-2xl sm:text-right shrink-0">
               <span className="text-xs text-emerald-800 dark:text-emerald-300 font-semibold block">
-                {property.listingType === 'sale' ? t.sale : t.rent}
+                {property.listingType === 'sale' ? t.salePrice : t.rentPrice}
               </span>
               <div className="text-xl sm:text-2xl font-black text-stone-950 dark:text-stone-100 font-sans">
-                {property.listingType === 'sale' ? t.sale : t.rent} • {typeLabel}
+                {formatEtbPrice(property.price, property.pricePeriod, currentLang)}
               </div>
+              <span className="text-[11px] text-stone-500 dark:text-stone-400 font-medium">
+                {typeLabel}
+              </span>
             </div>
           </div>
 
@@ -354,6 +367,25 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
               {property.status === 'occupied' ? (
                 <div className="py-3 px-4 bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold text-center">
                   {t.occupiedStatus} - {currentLang === 'am' ? 'ይህ ንብረት ተይዟል' : 'This listing is already taken'}
+                </div>
+              ) : matchingPackage && onUseCreditToUnlock ? (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => onUseCreditToUnlock(property)}
+                    className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-sm sm:text-base font-extrabold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-emerald-200" />
+                    <span>
+                      {currentLang === 'am'
+                        ? `ከጥቅልዎ 1 ንብረት ይክፈቱ (${matchingPackage.remainingUnlocks} ይቀራል)`
+                        : `Unlock with 1 Package Credit (${matchingPackage.remainingUnlocks} remaining)`}
+                    </span>
+                  </button>
+                  <p className="text-[11px] text-center text-emerald-800 dark:text-emerald-300 font-semibold">
+                    {currentLang === 'am'
+                      ? `የተገዛ የ${matchingPackage.maxHousePrice.toLocaleString()} ብር ጥቅል አለዎት`
+                      : `You have an active package for houses up to ${matchingPackage.maxHousePrice.toLocaleString()} ETB`}
+                  </p>
                 </div>
               ) : (
                 <button

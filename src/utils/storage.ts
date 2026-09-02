@@ -1,32 +1,22 @@
-import { Property, UnlockRequest, PaymentSettings, ReportedBroker } from '../types';
+import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId } from '../types';
 import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS } from '../data/sampleListings';
+import { USER_PACKAGE_TIERS } from './pricing';
 
 const STORAGE_KEYS = {
-  PROPERTIES: 'betdelala_properties_v1',
-  UNLOCK_REQUESTS: 'betdelala_unlock_requests_v1',
-  SETTINGS: 'betdelala_settings_v1',
+  PROPERTIES: 'betdelala_properties_v3',
+  UNLOCK_REQUESTS: 'betdelala_unlock_requests_v3',
+  SETTINGS: 'betdelala_settings_v3',
   USER_PHONE: 'betdelala_current_user_phone',
+  LOGGED_IN_USER: 'betdelala_active_user_session',
+  ALL_USERS: 'betdelala_user_accounts_v1',
   SUPABASE_CONFIG: 'betdelala_supabase_config',
-  BANNED_PHONES: 'betdelala_banned_phones_v1',
-  REPORTED_BROKERS: 'betdelala_reported_brokers_v1',
+  BANNED_PHONES: 'betdelala_banned_phones_v2',
+  REPORTED_BROKERS: 'betdelala_reported_brokers_v2',
 };
 
-// Initial default sample reported broker & banned phone for demonstration
-const DEFAULT_BANNED_PHONES: string[] = ['0911000000'];
-const DEFAULT_REPORTED_BROKERS: ReportedBroker[] = [
-  {
-    id: 'rep-sample-1',
-    reporterPhone: '0911223344',
-    reporterRole: 'owner',
-    reportedPhone: '0911000000',
-    propertyId: 'bese-001',
-    propertyTitle: 'Luxury 3-Bedroom Apartment in Bole Brass',
-    reason: 'broker_middleman_activity',
-    reasonText: 'Called pretending to be an outside broker and demanding 10% commission and trying to repost my house on telegram.',
-    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
-    status: 'banned',
-  }
-];
+// No default banned phones or reported brokers - fresh real platform state
+const DEFAULT_BANNED_PHONES: string[] = [];
+const DEFAULT_REPORTED_BROKERS: ReportedBroker[] = [];
 
 export interface SupabaseConfig {
   url: string;
@@ -62,20 +52,23 @@ export function isPhoneBanned(phone: string): boolean {
   return banned.some(b => b.replace(/[\s-]/g, '').toLowerCase() === clean);
 }
 
-export function banPhoneNumber(phone: string): void {
+export function banPhoneNumber(phone: string): string[] {
   const clean = phone.trim();
   const list = getStoredBannedPhones();
   if (!list.includes(clean)) {
     const updated = [clean, ...list];
     saveBannedPhones(updated);
+    return updated;
   }
+  return list;
 }
 
-export function unbanPhoneNumber(phone: string): void {
+export function unbanPhoneNumber(phone: string): string[] {
   const clean = phone.trim();
   const list = getStoredBannedPhones();
   const updated = list.filter(p => p !== clean);
   saveBannedPhones(updated);
+  return updated;
 }
 
 export function getStoredReportedBrokers(): ReportedBroker[] {
@@ -105,6 +98,328 @@ export function addReportedBroker(report: ReportedBroker): void {
   saveReportedBrokers(updated);
 }
 
+// -------------------------------------------------------------
+// USER ACCOUNTS & SESSION MANAGEMENT
+// -------------------------------------------------------------
+
+export function getStoredUsers(): UserAccount[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.ALL_USERS);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveUsers(users: UserAccount[]): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.ALL_USERS, JSON.stringify(users));
+  } catch (err) {
+    console.error('Error saving users:', err);
+  }
+}
+
+export function getActiveUserSession(): UserAccount | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.LOGGED_IN_USER);
+    if (!raw) return null;
+    const user = JSON.parse(raw);
+    // Refresh user data from all users list in case credits/unlocks updated
+    const allUsers = getStoredUsers();
+    const found = allUsers.find(u => u.phone === user.phone);
+    return found || user;
+  } catch {
+    return null;
+  }
+}
+
+export function saveActiveUserSession(user: UserAccount | null): void {
+  try {
+    if (!user) {
+      localStorage.removeItem(STORAGE_KEYS.LOGGED_IN_USER);
+    } else {
+      localStorage.setItem(STORAGE_KEYS.LOGGED_IN_USER, JSON.stringify(user));
+      saveUserPhone(user.phone);
+    }
+  } catch (err) {
+    console.error('Error saving active user session:', err);
+  }
+}
+
+export function clearActiveUserSession(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.LOGGED_IN_USER);
+  } catch (err) {
+    console.error('Error clearing active user session:', err);
+  }
+}
+
+export function loginUserAccount(phone: string, pin: string): { success: boolean; message: string; user?: UserAccount } {
+  const cleanPhone = phone.trim().replace(/[\s-]/g, '');
+  const allUsers = getStoredUsers();
+  const found = allUsers.find(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+
+  if (!found) {
+    return { success: false, message: 'No account found with this phone number. Please register.' };
+  }
+
+  if (found.pin && found.pin !== pin.trim()) {
+    return { success: false, message: 'Invalid PIN / password. Please try again.' };
+  }
+
+  saveActiveUserSession(found);
+  return { success: true, message: 'Logged in successfully!', user: found };
+}
+
+export function registerUserAccount(name: string, phone: string, pin: string): { success: boolean; message: string; user?: UserAccount } {
+  const cleanPhone = phone.trim().replace(/[\s-]/g, '');
+  const cleanName = name.trim() || 'User';
+  const cleanPin = pin.trim() || '1234';
+
+  const allUsers = getStoredUsers();
+  const existing = allUsers.find(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+
+  if (existing) {
+    // If already exists, log in
+    const updated = { ...existing, name: cleanName, pin: cleanPin };
+    const updatedList = allUsers.map(u => u.id === existing.id ? updated : u);
+    saveUsers(updatedList);
+    saveActiveUserSession(updated);
+    return { success: true, message: 'Account updated and logged in!', user: updated };
+  }
+
+  const newUser: UserAccount = {
+    id: `usr-${Date.now().toString(36)}`,
+    name: cleanName,
+    phone: cleanPhone,
+    pin: cleanPin,
+    createdAt: new Date().toISOString(),
+    unlockedPropertyIds: [],
+    packages: [],
+  };
+
+  saveUsers([newUser, ...allUsers]);
+  saveActiveUserSession(newUser);
+  return { success: true, message: 'Account registered successfully!', user: newUser };
+}
+
+export function loginOrRegisterUser(name: string, phone: string, pin: string): UserAccount {
+  const res = registerUserAccount(name, phone, pin);
+  return res.user!;
+}
+
+export function unlockPropertyWithCredit(
+  userIdOrPhone: string,
+  propertyId: string,
+  propertyPrice: number,
+  listingType?: string
+): { success: boolean; message: string; updatedUser?: UserAccount } {
+  const allUsers = getStoredUsers();
+  const clean = userIdOrPhone.trim().replace(/[\s-]/g, '');
+  const user = allUsers.find(u => u.id === userIdOrPhone || u.phone.replace(/[\s-]/g, '') === clean);
+
+  if (!user) {
+    return { success: false, message: 'User not found. Please log in first.' };
+  }
+
+  return deductUserCreditAndUnlock(user.phone, propertyId, propertyPrice, listingType);
+}
+
+/**
+ * Checks if a specific property is unlocked for the given user account
+ */
+export function isPropertyUnlockedForUser(propertyId: string, user: UserAccount | null): boolean {
+  if (!user || !propertyId) return false;
+  return user.unlockedPropertyIds.includes(propertyId);
+}
+
+/**
+ * Checks if user has an active credit package that can unlock a house of this price
+ */
+export function getEligiblePackageForPrice(user: UserAccount, price: number, listingType?: string): UserCreditPackage | null {
+  if (!user || !user.packages || user.packages.length === 0) return null;
+
+  for (const pkg of user.packages) {
+    if (pkg.remainingUnlocks > 0) {
+      if (listingType === 'sale' && pkg.tierId === 'tier_unlimited') {
+        return pkg;
+      }
+      if (price <= pkg.maxPrice) {
+        return pkg;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Deduct 1 credit from user package and unlock the property
+ */
+export function deductUserCreditAndUnlock(
+  userPhone: string,
+  propertyId: string,
+  propertyPrice: number,
+  listingType?: string
+): { success: boolean; message: string; updatedUser?: UserAccount } {
+  const allUsers = getStoredUsers();
+  const cleanPhone = userPhone.replace(/[\s-]/g, '');
+  const userIdx = allUsers.findIndex(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+
+  if (userIdx < 0) {
+    return { success: false, message: 'User not found. Please log in.' };
+  }
+
+  const user = allUsers[userIdx];
+  if (user.unlockedPropertyIds.includes(propertyId)) {
+    return { success: true, message: 'Already unlocked.', updatedUser: user };
+  }
+
+  // Find eligible package
+  const pkgIdx = user.packages.findIndex(p => {
+    if (p.remainingUnlocks <= 0) return false;
+    if (listingType === 'sale') return p.tierId === 'tier_unlimited';
+    return propertyPrice <= p.maxPrice;
+  });
+
+  if (pkgIdx < 0) {
+    return {
+      success: false,
+      message: 'No active credit package available for this price range. Please purchase a package or single unlock.',
+    };
+  }
+
+  // Deduct 1 unlock
+  const updatedPackages = [...user.packages];
+  updatedPackages[pkgIdx] = {
+    ...updatedPackages[pkgIdx],
+    remainingUnlocks: updatedPackages[pkgIdx].remainingUnlocks - 1,
+  };
+
+  const updatedUser: UserAccount = {
+    ...user,
+    unlockedPropertyIds: [...user.unlockedPropertyIds, propertyId],
+    packages: updatedPackages,
+  };
+
+  allUsers[userIdx] = updatedUser;
+  saveUsers(allUsers);
+  saveActiveUserSession(updatedUser);
+
+  return {
+    success: true,
+    message: `Unlocked successfully! ${updatedPackages[pkgIdx].remainingUnlocks} unlocks remaining in your ${updatedPackages[pkgIdx].tierName}.`,
+    updatedUser,
+  };
+}
+
+/**
+ * Credit a package with 5 unlocks to a user phone upon admin approval
+ */
+export function creditPackageToUserPhone(
+  userPhone: string,
+  tierId: PackageTierId,
+  creditsToGrant: number = 5
+): { success: boolean; updatedUser?: UserAccount } {
+  const allUsers = getStoredUsers();
+  const cleanPhone = userPhone.replace(/[\s-]/g, '');
+  let userIdx = allUsers.findIndex(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+
+  const tierDef = USER_PACKAGE_TIERS.find(t => t.id === tierId) || USER_PACKAGE_TIERS[0];
+
+  const newPackage: UserCreditPackage = {
+    tierId: tierDef.id,
+    tierName: tierDef.nameEn,
+    maxPrice: tierDef.maxPrice,
+    remainingUnlocks: creditsToGrant,
+    totalPurchased: creditsToGrant,
+    purchasedAt: new Date().toISOString(),
+  };
+
+  let updatedUser: UserAccount;
+
+  if (userIdx >= 0) {
+    const user = allUsers[userIdx];
+    updatedUser = {
+      ...user,
+      packages: [newPackage, ...(user.packages || [])],
+    };
+    allUsers[userIdx] = updatedUser;
+  } else {
+    // Create user profile for this phone
+    updatedUser = {
+      id: `usr-${Date.now().toString(36)}`,
+      name: 'User',
+      phone: cleanPhone,
+      pin: '1234',
+      createdAt: new Date().toISOString(),
+      unlockedPropertyIds: [],
+      packages: [newPackage],
+    };
+    allUsers.unshift(updatedUser);
+  }
+
+  saveUsers(allUsers);
+
+  // If currently active session is this user, refresh it
+  const activeSession = getActiveUserSession();
+  if (activeSession && activeSession.phone.replace(/[\s-]/g, '') === cleanPhone) {
+    saveActiveUserSession(updatedUser);
+  }
+
+  return { success: true, updatedUser };
+}
+
+/**
+ * Direct single property unlock credit to a user upon admin approval
+ */
+export function creditSinglePropertyUnlockToUser(
+  userPhone: string,
+  propertyId: string
+): { success: boolean; updatedUser?: UserAccount } {
+  const allUsers = getStoredUsers();
+  const cleanPhone = userPhone.replace(/[\s-]/g, '');
+  let userIdx = allUsers.findIndex(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+
+  let updatedUser: UserAccount;
+
+  if (userIdx >= 0) {
+    const user = allUsers[userIdx];
+    if (!user.unlockedPropertyIds.includes(propertyId)) {
+      updatedUser = {
+        ...user,
+        unlockedPropertyIds: [...user.unlockedPropertyIds, propertyId],
+      };
+      allUsers[userIdx] = updatedUser;
+      saveUsers(allUsers);
+    } else {
+      updatedUser = user;
+    }
+  } else {
+    updatedUser = {
+      id: `usr-${Date.now().toString(36)}`,
+      name: 'User',
+      phone: cleanPhone,
+      pin: '1234',
+      createdAt: new Date().toISOString(),
+      unlockedPropertyIds: [propertyId],
+      packages: [],
+    };
+    allUsers.unshift(updatedUser);
+    saveUsers(allUsers);
+  }
+
+  const activeSession = getActiveUserSession();
+  if (activeSession && activeSession.phone.replace(/[\s-]/g, '') === cleanPhone) {
+    saveActiveUserSession(updatedUser);
+  }
+
+  return { success: true, updatedUser };
+}
+
+// -------------------------------------------------------------
+// PROPERTIES & LISTINGS
+// -------------------------------------------------------------
 
 export function getStoredProperties(): Property[] {
   try {
@@ -114,12 +429,13 @@ export function getStoredProperties(): Property[] {
       return [];
     }
     const parsed: Property[] = JSON.parse(raw);
-    // Filter out legacy demo items if present so the user gets a 100% clean listing database
-    const realProperties = parsed.filter(p => !p.id.startsWith('bese-00'));
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return [];
+    }
     
     // Auto-update expiry status on load
     const now = Date.now();
-    return realProperties.map((p) => {
+    return parsed.map((p) => {
       const expiry = new Date(p.expiresAt).getTime();
       if (now > expiry && p.status === 'active') {
         return { ...p, status: 'expired' as const };
@@ -148,7 +464,7 @@ export function getStoredUnlockRequests(): UnlockRequest[] {
       return [];
     }
     const parsed: UnlockRequest[] = JSON.parse(raw);
-    return parsed.filter(r => !r.id.startsWith('req-sample-'));
+    return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
     console.error('Error loading unlock requests:', err);
     return [];
@@ -170,7 +486,20 @@ export function getStoredSettings(): PaymentSettings {
       localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
       return DEFAULT_SETTINGS;
     }
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    // Guarantee real bank accounts are present
+    const updated: PaymentSettings = {
+      ...DEFAULT_SETTINGS,
+      ...parsed,
+      telebirrNumber: parsed.telebirrNumber || '0991154337',
+      telebirrName: parsed.telebirrName || 'BetDelala (0991154337)',
+      cbeAccount: parsed.cbeAccount || '1000131638128',
+      cbeName: parsed.cbeName || 'BetDelala (CBE)',
+      boaAccount: parsed.boaAccount || '61648817',
+      boaName: parsed.boaName || 'BetDelala (Bank of Abyssinia / አቢሲኒያ)',
+      adminPin: parsed.adminPin || 'admin123',
+    };
+    return updated;
   } catch (err) {
     return DEFAULT_SETTINGS;
   }
@@ -181,6 +510,18 @@ export function saveSettings(settings: PaymentSettings): void {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
   } catch (err) {
     console.error('Error saving settings:', err);
+  }
+}
+
+export function updateAdminPin(newPin: string): boolean {
+  try {
+    const currentSettings = getStoredSettings();
+    const updated = { ...currentSettings, adminPin: newPin.trim() };
+    saveSettings(updated);
+    return true;
+  } catch (err) {
+    console.error('Error updating admin PIN:', err);
+    return false;
   }
 }
 
@@ -195,8 +536,20 @@ export function saveUserPhone(phone: string): void {
 export function getSupabaseConfig(): SupabaseConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.SUPABASE_CONFIG);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.url && parsed.anonKey) return parsed;
+    }
   } catch {}
+
+  // Fallback to Vite environment variables (e.g. from Vercel / .env)
+  const envUrl = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://uuulhzhxwxnoxyjcpemz.supabase.co';
+  const envKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || 'sb_publishable_weSbpLEUdCzHxr_1XheOdw_jZNq1e_k';
+
+  if (envUrl && envKey) {
+    return { url: envUrl, anonKey: envKey, isEnabled: true };
+  }
+
   return { url: '', anonKey: '', isEnabled: false };
 }
 
@@ -211,7 +564,7 @@ export function getDaysRemaining(expiresAt: string): {
   days: number;
   hours: number;
   isExpired: boolean;
-  isWarningPeriod: boolean; // Day 5 or 6 (less than 2 days remaining)
+  isWarningPeriod: boolean;
 } {
   const diffMs = new Date(expiresAt).getTime() - Date.now();
   if (diffMs <= 0) {
@@ -220,19 +573,23 @@ export function getDaysRemaining(expiresAt: string): {
 
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const isWarningPeriod = days <= 2; // When 5th or 6th day arrives
+  const isWarningPeriod = days <= 2;
 
   return { days, hours, isExpired: false, isWarningPeriod };
 }
 
 /**
- * Check if a buyer has approved unlock access to a specific property
+ * Legacy check helper for backwards compatibility
  */
 export function isPropertyUnlockedForBuyer(
   propertyId: string,
   buyerPhone: string,
   requests: UnlockRequest[]
 ): boolean {
+  const activeUser = getActiveUserSession();
+  if (activeUser && activeUser.unlockedPropertyIds.includes(propertyId)) {
+    return true;
+  }
   if (!buyerPhone || !propertyId) return false;
   const cleanPhone = buyerPhone.replace(/[\s-]/g, '');
   return requests.some(

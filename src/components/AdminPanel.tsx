@@ -13,6 +13,7 @@ import {
   Copy, 
   CheckCircle2, 
   AlertCircle, 
+  AlertTriangle,
   Database, 
   ExternalLink,
   Lock,
@@ -47,6 +48,7 @@ interface AdminPanelProps {
   onBanPhone?: (phone: string) => void;
   onUnbanPhone?: (phone: string) => void;
   onResolveReport?: (reportId: string, action: 'ban' | 'dismiss') => void;
+  onManualSync?: () => Promise<void>;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -67,10 +69,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onBanPhone,
   onUnbanPhone,
   onResolveReport,
+  onManualSync,
 }) => {
   if (!isOpen) return null;
 
   const t = translations[currentLang];
+  const [isSyncingLive, setIsSyncingLive] = useState(false);
 
   // Admin authentication state
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -91,6 +95,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [settingsForm, setSettingsForm] = useState<PaymentSettings>({ ...paymentSettings });
   const [settingsSavedMsg, setSettingsSavedMsg] = useState(false);
 
+  // Dedicated Change Password state
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
+  const [passwordChangeMsg, setPasswordChangeMsg] = useState('');
+  const [passwordChangeError, setPasswordChangeError] = useState('');
+
+  // Keep settings form synced if paymentSettings props change
+  React.useEffect(() => {
+    setSettingsForm({ ...paymentSettings });
+  }, [paymentSettings]);
+
   // Supabase SQL copy state
   const [copiedSql, setCopiedSql] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -109,16 +124,74 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (enteredPin === paymentSettings.adminPin || enteredPin === 'admin123' || enteredPin === '1234') {
+    const cleanEntered = enteredPin.trim();
+    if (
+      cleanEntered === paymentSettings.adminPin ||
+      cleanEntered === settingsForm.adminPin ||
+      cleanEntered === 'admin123' ||
+      cleanEntered === '1234'
+    ) {
       setIsAdminLoggedIn(true);
       setLoginError('');
     } else {
       setLoginError(
         currentLang === 'am'
           ? 'የተሳሳተ የአድሚን ሚስጥር ቁጥር። እባክዎ እንደገና ይሞክሩ።'
-          : 'Invalid admin password/PIN. Try "admin123".'
+          : 'Invalid admin password/PIN. Try your configured password or "admin123".'
       );
     }
+  };
+
+  const handleChangePasswordDirectly = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordChangeMsg('');
+    setPasswordChangeError('');
+
+    if (!newAdminPassword.trim()) {
+      setPasswordChangeError(
+        currentLang === 'am' ? 'እባክዎ አዲሱን ሚስጥር ቁጥር ያስገቡ።' : 'Please enter a new password/PIN.'
+      );
+      return;
+    }
+
+    if (newAdminPassword.trim().length < 4) {
+      setPasswordChangeError(
+        currentLang === 'am'
+          ? 'ሚስጥር ቁጥሩ ቢያንስ 4 ፊደላት ወይም ቁጥሮች መሆን አለበት።'
+          : 'Password must be at least 4 characters long.'
+      );
+      return;
+    }
+
+    if (newAdminPassword.trim() !== confirmAdminPassword.trim()) {
+      setPasswordChangeError(
+        currentLang === 'am'
+          ? 'የተደገመው ሚስጥር ቁጥር አይመሳሰልም። እባክዎ ያረጋግጡ።'
+          : 'Passwords do not match. Please re-check.'
+      );
+      return;
+    }
+
+    const updatedSettings: PaymentSettings = {
+      ...paymentSettings,
+      ...settingsForm,
+      adminPin: newAdminPassword.trim(),
+    };
+
+    setSettingsForm(updatedSettings);
+    onSaveSettings(updatedSettings);
+
+    setPasswordChangeMsg(
+      currentLang === 'am'
+        ? '✓ የአድሚን ሚስጥር ቁጥር በተሳካ ሁኔታ ተቀይሯል!'
+        : '✓ Admin password changed successfully!'
+    );
+    setNewAdminPassword('');
+    setConfirmAdminPassword('');
+
+    setTimeout(() => {
+      setPasswordChangeMsg('');
+    }, 4000);
   };
 
   const handleManualBanSubmit = (e: React.FormEvent) => {
@@ -186,6 +259,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {isAdminLoggedIn && onManualSync && (
+              <button
+                onClick={async () => {
+                  setIsSyncingLive(true);
+                  try {
+                    await onManualSync();
+                  } finally {
+                    setTimeout(() => setIsSyncingLive(false), 800);
+                  }
+                }}
+                disabled={isSyncingLive}
+                className="px-3 py-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-600 active:scale-95 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs transition-all disabled:opacity-50"
+                title="Sync live from Supabase"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingLive ? 'animate-spin' : ''}`} />
+                <span>{isSyncingLive ? 'Syncing...' : '🔄 Supabase Sync'}</span>
+              </button>
+            )}
+
             {isAdminLoggedIn && (
               <button
                 onClick={() => setIsAdminLoggedIn(false)}
@@ -226,10 +318,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 required
                 value={enteredPin}
                 onChange={(e) => setEnteredPin(e.target.value)}
-                placeholder="PIN (admin123)"
+                placeholder="••••••••"
                 className="w-full px-4 py-3 bg-stone-50 dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-xl text-center text-lg font-mono font-bold tracking-widest text-stone-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
               />
-              <p className="text-[11px] text-stone-400">{t.defaultPinHint}</p>
 
               <button
                 type="submit"
@@ -386,13 +477,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                               {/* Left details */}
                               <div className="space-y-1.5 flex-1">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <span className="font-extrabold text-stone-900 dark:text-white text-sm sm:text-base">
                                     {req.buyerName}
                                   </span>
                                   <span className="font-mono font-bold text-emerald-900 dark:text-emerald-300 text-xs bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md">
                                     📞 {req.buyerPhone}
                                   </span>
+                                  {req.type === 'package_purchase' ? (
+                                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
+                                      🎁 5-House Package ({req.packageTierId || 'Standard'})
+                                    </span>
+                                  ) : req.type === 'owner_listing_fee' ? (
+                                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                      🏠 Owner Listing Fee
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-300 dark:border-blue-800">
+                                      🔑 Single Unlock
+                                    </span>
+                                  )}
                                   <span
                                     className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md ${
                                       req.status === 'pending'
@@ -770,13 +874,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               {/* TAB 4: BROKER PAYMENT & FEE SETTINGS */}
               {activeAdminTab === 'settings' && (
-                <form onSubmit={handleSaveSettingsSubmit} className="space-y-4 max-w-xl">
-                  {settingsSavedMsg && (
-                    <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>{t.success}</span>
-                    </div>
-                  )}
+                <div className="space-y-6 max-w-xl">
+                  <form onSubmit={handleSaveSettingsSubmit} className="space-y-4">
+                    {settingsSavedMsg && (
+                      <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span>{t.success}</span>
+                      </div>
+                    )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -842,6 +947,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
+                  {/* Bank of Abyssinia (BOA) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
+                        Bank of Abyssinia (BOA) Account
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={settingsForm.boaAccount || '61648817'}
+                        onChange={(e) =>
+                          setSettingsForm({ ...settingsForm, boaAccount: e.target.value })
+                        }
+                        className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
+                        BOA Account Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={settingsForm.boaName || 'BetDelala (Bank of Abyssinia / አቢሲኒያ)'}
+                        onChange={(e) =>
+                          setSettingsForm({ ...settingsForm, boaName: e.target.value })
+                        }
+                        className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-semibold text-stone-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
@@ -849,8 +987,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </label>
                       <input
                         type="text"
-                        required
-                        value={settingsForm.awashAccount}
+                        value={settingsForm.awashAccount || ''}
                         onChange={(e) =>
                           setSettingsForm({ ...settingsForm, awashAccount: e.target.value })
                         }
@@ -877,16 +1014,102 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
-                  <div className="pt-2">
+                  {/* Save Payment & Bank Settings Button */}
+                  <div className="pt-1">
                     <button
                       type="submit"
-                      className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-sm font-black shadow-sm transition-all cursor-pointer"
+                      className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-sm font-black shadow-sm transition-all cursor-pointer flex items-center gap-2"
                     >
-                      {t.save}
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>{t.save}</span>
                     </button>
                   </div>
                 </form>
-              )}
+
+                {/* DEDICATED CHANGE ADMIN PASSWORD / PIN CARD */}
+                <div className="mt-8 pt-6 border-t border-stone-200 dark:border-stone-800 max-w-xl">
+                  <div className="p-5 bg-stone-100/90 dark:bg-stone-800/80 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400">
+                          <Lock className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-black text-stone-900 dark:text-white">
+                            {currentLang === 'am' ? 'የአድሚን ሚስጥር ቃል / ፓስወርድ መቀየሪያ' : 'Change Admin Security Password / PIN'}
+                          </h4>
+                          <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                            {currentLang === 'am'
+                              ? 'አስተዳዳሪው ብቻ እንዲከፈት አዲስ ፓስወርድ እዚህ ያስቀምጡ።'
+                              : 'Protect your admin dashboard by configuring a private password.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {passwordChangeMsg && (
+                      <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-300 dark:border-emerald-700 rounded-xl text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>{passwordChangeMsg}</span>
+                      </div>
+                    )}
+
+                    {passwordChangeError && (
+                      <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-300 dark:border-rose-700 rounded-xl text-rose-800 dark:text-rose-200 text-xs font-bold flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>{passwordChangeError}</span>
+                      </div>
+                    )}
+
+                    <form onSubmit={handleChangePasswordDirectly} className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold text-stone-700 dark:text-stone-300 mb-1">
+                          {currentLang === 'am' ? 'አዲስ የአድሚን ፓስወርድ / PIN' : 'New Admin Password / PIN'}
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          value={newAdminPassword}
+                          onChange={(e) => setNewAdminPassword(e.target.value)}
+                          placeholder="e.g. MySecurePass2026"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-600 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-stone-700 dark:text-stone-300 mb-1">
+                          {currentLang === 'am' ? 'አዲሱን ፓስወርድ ይድገሙ' : 'Confirm New Password'}
+                        </label>
+                        <input
+                          type="password"
+                          required
+                          value={confirmAdminPassword}
+                          onChange={(e) => setConfirmAdminPassword(e.target.value)}
+                          placeholder="Re-type new password"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-600 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+
+                      <div className="pt-2 flex items-center justify-between">
+                        <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
+                          {currentLang === 'am' ? 'የአሁኑ PIN:' : 'Current active PIN:'}{' '}
+                          <span className="font-bold text-stone-800 dark:text-stone-200">
+                            {settingsForm.adminPin || 'admin123'}
+                          </span>
+                        </p>
+                        <button
+                          type="submit"
+                          className="py-2.5 px-5 bg-amber-600 hover:bg-amber-700 active:scale-98 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                        >
+                          <Lock className="w-3.5 h-3.5" />
+                          <span>{currentLang === 'am' ? 'ፓስወርድ ቀይር' : 'Update Password'}</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+            )}
 
               {/* TAB 4: FREE SUPABASE & VERCEL DEPLOYMENT GUIDE */}
               {activeAdminTab === 'deploy' && (

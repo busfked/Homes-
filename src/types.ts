@@ -11,7 +11,7 @@ export type MachineryType = 'excavator' | 'wheel_loader' | 'dump_truck' | 'crane
 
 export type ListingType = 'rent' | 'sale';
 
-export type PropertyStatus = 'active' | 'occupied' | 'expired' | 'pending_approval';
+export type PropertyStatus = 'active' | 'occupied' | 'expired' | 'pending' | 'pending_approval';
 
 export interface PropertyImage {
   url: string;
@@ -55,6 +55,8 @@ export interface Property {
   bathrooms?: number;
   areaSqMeters?: number;
   images: PropertyImage[];
+  nationalIdFrontUrl?: string; // National ID front photo for owner verification & safety
+  nationalIdSizeKb?: number;
   ownerPhone: string; // Hidden until unlocked
   ownerName: string; // Hidden until unlocked
   ownerPin: string; // 4-digit PIN for owner to manage, mark occupied, or renew
@@ -71,15 +73,47 @@ export interface Property {
   unlockCount: number;
 }
 
-export type PaymentMethod = 'telebirr' | 'cbe' | 'awash' | 'cbebirr';
+export type PaymentMethod = 'telebirr' | 'cbe' | 'boa' | 'awash' | 'cbebirr';
 
 export type UnlockStatus = 'pending' | 'approved' | 'rejected';
 
+export type PackageTierId = 'tier_10k' | 'tier_35k' | 'tier_75k' | 'tier_unlimited';
+
+export interface UserCreditPackage {
+  id?: string;
+  tierId: PackageTierId;
+  tierName: string;
+  maxPrice: number; // 10000, 35000, 75000, or 999999999
+  maxHousePrice?: number;
+  remainingUnlocks: number; // e.g. 5, 4, 3, 2, 1, 0
+  totalPurchased: number; // 5
+  purchasedAt: string;
+}
+
+export interface UserAccount {
+  id: string;
+  name: string;
+  phone: string;
+  pin: string; // 4-digit PIN or password
+  createdAt: string;
+  unlockedPropertyIds: string[]; // List of property IDs unlocked by this user
+  packages: UserCreditPackage[];
+}
+
+export type UnlockRequestType = 'single_property' | 'credit_package' | 'package_purchase' | 'owner_listing_fee' | 'single_unlock';
+
 export interface UnlockRequest {
   id: string;
-  propertyId: string;
-  propertyTitle: string;
-  propertyArea: string;
+  requestType?: UnlockRequestType;
+  type?: string;
+  propertyId?: string;
+  propertyTitle?: string;
+  propertyArea?: string;
+  packageTierId?: PackageTierId;
+  packageTierName?: string;
+  maxHousePrice?: number;
+  remainingUnlocks?: number;
+  creditsToGrant?: number; // 5
   buyerName: string;
   buyerPhone: string;
   paymentMethod: PaymentMethod;
@@ -87,7 +121,7 @@ export interface UnlockRequest {
   screenshotUrl: string;
   screenshotSizeKb?: number;
   status: UnlockStatus;
-  amountBirr: number; // 100 for rent, 500 for sale
+  amountBirr: number;
   createdAt: string;
   approvedAt?: string;
   adminNote?: string;
@@ -98,6 +132,8 @@ export interface PaymentSettings {
   telebirrName: string;
   cbeAccount: string;
   cbeName: string;
+  boaAccount: string; // Bank of Abyssinia
+  boaName: string;
   awashAccount: string;
   awashName: string;
   feeAmountRentBirr: number; // 100 ETB

@@ -22,7 +22,8 @@ import {
   CategoryType,
   PropertyType, 
   ListingType,
-  ReportedBroker 
+  ReportedBroker,
+  UserAccount
 } from './types';
 import { 
   getStoredProperties, 
@@ -41,7 +42,13 @@ import {
   banPhoneNumber,
   unbanPhoneNumber,
   getStoredReportedBrokers,
-  saveReportedBrokers
+  saveReportedBrokers,
+  getActiveUserSession,
+  saveActiveUserSession,
+  clearActiveUserSession,
+  unlockPropertyWithCredit,
+  creditPackageToUserPhone,
+  creditSinglePropertyUnlockToUser
 } from './utils/storage';
 import { translations } from './data/translations';
 import { Navbar } from './components/Navbar';
@@ -54,6 +61,7 @@ import { OwnerManageModal } from './components/OwnerManageModal';
 import { AdminPanel } from './components/AdminPanel';
 import { MyRequestsModal } from './components/MyRequestsModal';
 import { ReportBrokerModal } from './components/ReportBrokerModal';
+import { UserAuthModal } from './components/UserAuthModal';
 
 export default function App() {
   // Localization state (Amharic default as requested)
@@ -87,6 +95,7 @@ export default function App() {
   const [unlockRequests, setUnlockRequests] = useState<UnlockRequest[]>([]);
   const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(getStoredSettings());
   const [userPhone, setUserPhone] = useState<string>(getStoredUserPhone());
+  const [currentUser, setCurrentUser] = useState<UserAccount | null>(() => getActiveUserSession());
   const [bannedPhones, setBannedPhones] = useState<string[]>([]);
   const [reportedBrokers, setReportedBrokers] = useState<ReportedBroker[]>([]);
 
@@ -114,6 +123,7 @@ export default function App() {
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [isMyRequestsModalOpen, setIsMyRequestsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isUserAuthModalOpen, setIsUserAuthModalOpen] = useState(false);
 
   // Toast / Status Message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -199,7 +209,7 @@ export default function App() {
     setActiveTab('browse');
   };
 
-  // Submit 50 Birr Unlock Request
+  // Submit Unlock or Package Request
   const handleSubmitUnlockRequest = (newReq: UnlockRequest) => {
     const updated = [newReq, ...unlockRequests];
     updateRequestsState(updated);
@@ -209,24 +219,76 @@ export default function App() {
     }
     showToast(
       currentLang === 'am'
-        ? 'የ 50 ብር ክፍያ ስክሪንሽት ለአድሚኑ ተልኳል። እንደጸደቀ የባለቤቱ ስልክ ይከፈታል።'
-        : '50 ETB receipt submitted. Owner contact will unlock once admin approves.'
+        ? `${newReq.amountBirr || 150} ብር የከፈሉበት ስክሪንሽት ለአድሚኑ ተልኳል! እንደጸደቀ ይሰራልዎታል።`
+        : `${newReq.amountBirr || 150} ETB receipt submitted! Activated once admin verifies.`
     );
   };
 
   // Admin Approve Request
   const handleApproveRequest = (requestId: string) => {
+    const targetReq = unlockRequests.find((r) => r.id === requestId);
+    if (!targetReq) return;
+
     const updated = unlockRequests.map((r) =>
       r.id === requestId
         ? { ...r, status: 'approved' as const, approvedAt: new Date().toISOString() }
         : r
     );
     updateRequestsState(updated);
+
+    // If request was a package purchase, add package with 5 credits to user's phone account
+    if (targetReq.type === 'package_purchase' || targetReq.packageTierId) {
+      const result = creditPackageToUserPhone(
+        targetReq.buyerPhone,
+        targetReq.packageTierId as any || 'tier_10k',
+        targetReq.remainingUnlocks || 5
+      );
+      if (result.updatedUser && currentUser && currentUser.phone === targetReq.buyerPhone) {
+        setCurrentUser(result.updatedUser);
+      }
+    } else if (targetReq.type === 'single_unlock' && targetReq.propertyId) {
+      // Single property unlock credit
+      const result = creditSinglePropertyUnlockToUser(targetReq.buyerPhone, targetReq.propertyId);
+      if (result.updatedUser && currentUser && currentUser.phone === targetReq.buyerPhone) {
+        setCurrentUser(result.updatedUser);
+      }
+    } else if (targetReq.type === 'owner_listing_fee' && targetReq.propertyId) {
+      // Activate pending owner property
+      const updatedProps = properties.map((p) =>
+        p.id === targetReq.propertyId ? { ...p, status: 'active' as const } : p
+      );
+      updatePropertiesState(updatedProps);
+    }
+
     showToast(
       currentLang === 'am'
-        ? 'የ 50 ብር ክፍያው ጸድቋል! ለተጠቃሚው የባለቤቱ ስልክ ተከፍቷል።'
-        : 'Payment approved! Owner contact unlocked for user.'
+        ? 'ክፍያው ጸድቋል! ለተጠቃሚው አገልግሎቱ ተከፍቷል።'
+        : 'Payment approved! Access granted to user.'
     );
+  };
+
+  // 1-Click unlock using an existing package credit
+  const handleUseCreditToUnlock = (property: Property) => {
+    if (!currentUser) {
+      setIsUserAuthModalOpen(true);
+      return;
+    }
+    const res = unlockPropertyWithCredit(currentUser.id, property.id, property.price);
+    if (res.success && res.updatedUser) {
+      setCurrentUser(res.updatedUser);
+      showToast(
+        currentLang === 'am'
+          ? `ተሳክቷል! የባለቤቱ ስልክ ተከፍቷል (${res.updatedUser.packages.reduce((sum, p) => sum + p.remainingUnlocks, 0)} ቀሪ ክሬዲት አለዎት)`
+          : `Unlocked! Owner contact is now visible.`
+      );
+    } else {
+      showToast(res.message);
+      if (!res.success) {
+        // Offer to buy package or unlock
+        setSelectedPropertyForDetails(null);
+        setSelectedPropertyForUnlock(property);
+      }
+    }
   };
 
   // Admin Reject Request
@@ -399,7 +461,9 @@ export default function App() {
         setActiveTab={setActiveTab}
         pendingApprovalsCount={pendingApprovalsCount}
         userPhone={userPhone}
+        currentUser={currentUser}
         onOpenUserPhoneModal={() => setIsMyRequestsModalOpen(true)}
+        onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -611,12 +675,17 @@ export default function App() {
         isOpen={!!selectedPropertyForDetails}
         onClose={() => setSelectedPropertyForDetails(null)}
         currentLang={currentLang}
+        currentUser={currentUser}
+        onUseCreditToUnlock={handleUseCreditToUnlock}
         isUnlocked={
           selectedPropertyForDetails
-            ? isPropertyUnlockedForBuyer(
-                selectedPropertyForDetails.id,
-                userPhone,
-                unlockRequests
+            ? Boolean(
+                currentUser?.unlockedPropertyIds?.includes(selectedPropertyForDetails.id) ||
+                isPropertyUnlockedForBuyer(
+                  selectedPropertyForDetails.id,
+                  userPhone,
+                  unlockRequests
+                )
               )
             : false
         }
@@ -646,7 +715,7 @@ export default function App() {
         onAddProperty={handleAddProperty}
       />
 
-      {/* 3. 50/100/500 Birr Unlock Payment Modal */}
+      {/* 3. Unlock Payment & Package Purchase Modal */}
       <UnlockPaymentModal
         property={selectedPropertyForUnlock}
         isOpen={!!selectedPropertyForUnlock}
@@ -654,6 +723,9 @@ export default function App() {
         currentLang={currentLang}
         paymentSettings={paymentSettings}
         userPhone={userPhone}
+        currentUser={currentUser}
+        onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
+        onUseCredit={handleUseCreditToUnlock}
         onSubmitUnlockRequest={handleSubmitUnlockRequest}
       />
 
@@ -732,6 +804,34 @@ export default function App() {
               ? 'ጥቆማዎ ደርሶናል! ጥፋተኛው በአስተዳዳሪው ወዲያውኑ ይታገዳል።'
               : 'Report submitted! The offender will be reviewed and blacklisted.'
           );
+        }}
+      />
+
+      {/* 8. User Account & Package Management Modal */}
+      <UserAuthModal
+        isOpen={isUserAuthModalOpen}
+        onClose={() => setIsUserAuthModalOpen(false)}
+        currentLang={currentLang}
+        currentUser={currentUser}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setUserPhone(user.phone);
+          saveUserPhone(user.phone);
+          showToast(currentLang === 'am' ? `እንኳን ደህና መጡ ${user.name}!` : `Welcome ${user.name}!`);
+        }}
+        onLogout={() => {
+          clearActiveUserSession();
+          setCurrentUser(null);
+          showToast(currentLang === 'am' ? 'በተሳካ ሁኔታ ወጥተዋል' : 'Logged out successfully');
+        }}
+        unlockedProperties={properties.filter((p) => currentUser?.unlockedPropertyIds?.includes(p.id))}
+        onOpenPropertyDetails={(prop) => {
+          setIsUserAuthModalOpen(false);
+          setSelectedPropertyForDetails(prop);
+        }}
+        onOpenBuyPackageModal={() => {
+          setIsUserAuthModalOpen(false);
+          setSelectedPropertyForUnlock(properties[0] || null);
         }}
       />
     </div>

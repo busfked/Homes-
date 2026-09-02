@@ -22,6 +22,7 @@ import {
 import { Property, Language } from '../types';
 import { translations } from '../data/translations';
 import { getDaysRemaining } from '../utils/storage';
+import { formatEtbPrice } from '../utils/pricing';
 import { PROPERTY_TYPES, CAR_TYPES, MACHINERY_TYPES } from '../data/addisAreas';
 
 interface HouseCardProps {
@@ -219,6 +220,23 @@ export const HouseCard: React.FC<HouseCardProps> = ({
           <p className="text-stone-600 dark:text-stone-400 text-xs line-clamp-2 mb-3 leading-relaxed">
             {currentLang === 'am' && property.descriptionAm ? property.descriptionAm : property.description}
           </p>
+
+          {/* Price display row (visible to everyone) */}
+          <div className="flex items-baseline justify-between mb-3">
+            <div>
+              <span className="text-xs font-semibold text-stone-500 dark:text-stone-400 block">
+                {currentLang === 'am' ? 'ዋጋ' : 'Price'}
+              </span>
+              <span className="text-lg sm:text-xl font-black text-stone-900 dark:text-white">
+                {formatEtbPrice(property.price, property.pricePeriod, currentLang)}
+              </span>
+            </div>
+            {property.listingType === 'sale' && (
+              <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 text-[11px] font-extrabold">
+                {currentLang === 'am' ? 'የሽያጭ ዋጋ' : 'For Sale'}
+              </span>
+            )}
+          </div>
 
           {/* Specifications Bar (Dynamic by Category) */}
           <div className="flex items-center gap-3 text-xs font-semibold text-stone-600 dark:text-stone-300 mb-4 bg-stone-50 dark:bg-stone-800/60 p-2.5 rounded-xl border border-stone-100 dark:border-stone-800">
