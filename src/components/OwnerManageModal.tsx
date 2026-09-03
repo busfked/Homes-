@@ -13,6 +13,7 @@ interface OwnerManageModalProps {
   onRenewProperty: (propertyId: string) => void;
   onDeleteProperty: (propertyId: string) => void;
   initialProperty?: Property | null;
+  onAddNewHome?: (ownerPhone?: string) => void;
 }
 
 export const OwnerManageModal: React.FC<OwnerManageModalProps> = ({
@@ -24,6 +25,7 @@ export const OwnerManageModal: React.FC<OwnerManageModalProps> = ({
   onRenewProperty,
   onDeleteProperty,
   initialProperty,
+  onAddNewHome,
 }) => {
   if (!isOpen) return null;
 
@@ -194,26 +196,71 @@ export const OwnerManageModal: React.FC<OwnerManageModalProps> = ({
               >
                 {t.findMyListings}
               </button>
+
+              {/* Owner Add Home CTA on login screen */}
+              {onAddNewHome && (
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onAddNewHome(phone);
+                    }}
+                    className="w-full py-2.5 px-4 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Home className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>{currentLang === 'am' ? '+ አዲስ ቤት መለጠፍ ይፈልጋሉ? እዚህ ይጫኑ' : '+ Want to post a new home? Click here'}</span>
+                  </button>
+                </div>
+              )}
             </form>
           ) : (
             /* OWNER HOUSES MANAGEMENT DASHBOARD */
             <div className="space-y-6">
-              <div className="flex items-center justify-between pb-3 border-b border-stone-200 dark:border-stone-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-200 dark:border-stone-800">
                 <div>
                   <span className="text-xs text-stone-500 dark:text-stone-400 font-medium">{t.ownerPhoneLabel}</span>
                   <span className="font-mono font-bold text-stone-900 dark:text-white ml-2">{phone}</span>
                 </div>
-                <button
-                  onClick={() => setIsAuthenticated(false)}
-                  className="text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 underline cursor-pointer"
-                >
-                  {currentLang === 'am' ? 'በሌላ ስልክ ግባ' : 'Switch Phone'}
-                </button>
+                <div className="flex items-center gap-2">
+                  {onAddNewHome && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onAddNewHome(phone);
+                      }}
+                      className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-black shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Home className="w-3.5 h-3.5" />
+                      <span>{currentLang === 'am' ? '+ አዲስ ቤት ይጨምሩ' : '+ Add Home for Owner'}</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsAuthenticated(false)}
+                    className="text-xs text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200 underline cursor-pointer"
+                  >
+                    {currentLang === 'am' ? 'በሌላ ስልክ ግባ' : 'Switch Phone'}
+                  </button>
+                </div>
               </div>
 
               {ownerProperties.length === 0 ? (
-                <div className="text-center py-8 text-stone-500 dark:text-stone-400 text-sm">
-                  {currentLang === 'am' ? 'ምንም የተመዘገበ ቤት የለዎትም።' : 'No properties found.'}
+                <div className="text-center py-8 text-stone-500 dark:text-stone-400 text-sm space-y-3">
+                  <p>{currentLang === 'am' ? 'ምንም የተመዘገበ ቤት የለዎትም።' : 'No properties found.'}</p>
+                  {onAddNewHome && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onAddNewHome(phone);
+                      }}
+                      className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 shadow-xs cursor-pointer"
+                    >
+                      <Home className="w-4 h-4" />
+                      <span>{currentLang === 'am' ? '+ አሁን የመጀመሪያዎን ቤት ይለጥፉ' : '+ Post Your First Home Now'}</span>
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-4">

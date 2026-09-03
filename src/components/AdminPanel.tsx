@@ -24,7 +24,8 @@ import {
   UserX,
   Phone,
   Users,
-  UserCheck
+  UserCheck,
+  Plus
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Property, UnlockRequest, PaymentSettings, Language, ReportedBroker, UserAccount } from '../types';
@@ -67,6 +68,7 @@ interface AdminPanelProps {
   onUnbanPhone?: (phone: string) => void;
   onResolveReport?: (reportId: string, action: 'ban' | 'dismiss') => void;
   onManualSync?: () => Promise<void>;
+  onOpenPostPropertyAsAdmin?: () => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -88,6 +90,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onUnbanPhone,
   onResolveReport,
   onManualSync,
+  onOpenPostPropertyAsAdmin,
 }) => {
   if (!isOpen) return null;
 
@@ -955,26 +958,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* TAB 2: ALL LISTINGS & AUTO-CLEANUP */}
               {activeAdminTab === 'inventory' && (
                 <div className="space-y-4">
-                  {/* Top Bar with Auto-Cleanup Button */}
+                  {/* Top Bar with Add Listing as Admin and Auto-Cleanup Button */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50 dark:bg-stone-850 p-4 rounded-2xl border border-stone-200 dark:border-stone-700">
                     <div>
-                      <h4 className="font-bold text-stone-900 dark:text-stone-100 text-sm">
-                        {currentLang === 'am' ? 'የ 7 ቀን የዳታ ማጽጃ (Free Tier Optimizer)' : '7-Day Auto-Cleanup Engine'}
+                      <h4 className="font-bold text-stone-900 dark:text-stone-100 text-sm flex items-center gap-2">
+                        <span>{currentLang === 'am' ? 'የቤቶችና ንብረቶች ቁጥጥር' : 'Listings & Catalog Management'}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-black">
+                          {properties.length} {currentLang === 'am' ? 'ንብረቶች' : 'Items'}
+                        </span>
                       </h4>
-                      <p className="text-xs text-stone-500 dark:text-stone-400">
+                      <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
                         {currentLang === 'am'
-                          ? 'ከ 7 ቀናት በላይ የሆናቸውን እና በ 5/6ኛው ቀን ያልታደሱትን ንብረቶች በማጥፋት የ Supabase ማከማቻ ቦታን ይቆጥቡ።'
-                          : 'Deletes listings older than 7 days that were not renewed by owners on day 5/6.'}
+                          ? 'እንደ አድሚን በቀጥታ ይለጥፉ፤ ወይም ከ 7 ቀናት በላይ የሆናቸውን ንብረቶች በማጽዳት ቦታ ይቆጥቡ።'
+                          : 'Post directly as admin without review, or clean up listings older than 7 days.'}
                       </p>
                     </div>
 
-                    <button
-                      onClick={onAutoCleanExpired}
-                      className="py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-xs transition-all cursor-pointer shrink-0"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                      <span>{t.cleanExpiredBtn} ({expiredHouses.length})</span>
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                      {onOpenPostPropertyAsAdmin && (
+                        <button
+                          type="button"
+                          onClick={onOpenPostPropertyAsAdmin}
+                          className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>{currentLang === 'am' ? '+ እንደ አድሚን በቀጥታ ይለጥፉ' : '+ Direct Admin Post'}</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={onAutoCleanExpired}
+                        className="py-2.5 px-3.5 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>{t.cleanExpiredBtn} ({expiredHouses.length})</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Listings Table */}

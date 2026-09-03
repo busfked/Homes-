@@ -48,8 +48,20 @@ import {
   clearActiveUserSession,
   unlockPropertyWithCredit,
   creditPackageToUserPhone,
-  creditSinglePropertyUnlockToUser
+  creditSinglePropertyUnlockToUser,
+  getStoredUsers,
+  saveUsers
 } from './utils/storage';
+import {
+  fetchPropertiesFromSupabase,
+  savePropertyToSupabase,
+  deletePropertyFromSupabase,
+  fetchUnlockRequestsFromSupabase,
+  saveUnlockRequestToSupabase,
+  fetchUsersFromSupabase,
+  saveUserToSupabase,
+  saveUserUnlockedPropertyToSupabase
+} from './utils/supabaseClient';
 import { getTierForProperty, PRICE_TIERS } from './utils/pricing';
 import { translations } from './data/translations';
 import { Navbar } from './components/Navbar';
@@ -126,6 +138,11 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isUserAuthModalOpen, setIsUserAuthModalOpen] = useState(false);
 
+  // Admin direct posting & Owner pre-fill state
+  const [isAdminPosting, setIsAdminPosting] = useState(false);
+  const [prefilledOwnerPhone, setPrefilledOwnerPhone] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
+
   // Toast / Status Message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -134,7 +151,80 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // Load Data on Mount & check 7-day auto-expiry logic
+  // 2-Way Live Supabase Synchronization
+  const syncFromSupabase = async () => {
+    try {
+      setIsSyncing(true);
+      const [remoteProps, remoteReqs, remoteUsers] = await Promise.all([
+        fetchPropertiesFromSupabase(),
+        fetchUnlockRequestsFromSupabase(),
+        fetchUsersFromSupabase()
+      ]);
+
+      if (remoteProps && Array.isArray(remoteProps) && remoteProps.length > 0) {
+        setProperties((prev) => {
+          const remoteMap = new Map(remoteProps.map((p) => [p.id, p]));
+          const merged = [...remoteProps];
+          for (const localP of prev) {
+            if (!remoteMap.has(localP.id)) {
+              merged.push(localP);
+              // push this local property to Supabase in background
+              savePropertyToSupabase(localP).catch(console.warn);
+            }
+          }
+          saveProperties(merged);
+          return merged;
+        });
+      }
+
+      if (remoteReqs && Array.isArray(remoteReqs)) {
+        setUnlockRequests((prev) => {
+          const remoteMap = new Map(remoteReqs.map((r) => [r.id, r]));
+          const merged = [...remoteReqs];
+          for (const localR of prev) {
+            if (!remoteMap.has(localR.id)) {
+              merged.push(localR);
+              saveUnlockRequestToSupabase(localR).catch(console.warn);
+            }
+          }
+          saveUnlockRequests(merged);
+          return merged;
+        });
+      }
+
+      if (remoteUsers && Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+        const localUsers = getStoredUsers();
+        const remoteUserMap = new Map(remoteUsers.map((u) => [u.phone.replace(/[\s-]/g, ''), u]));
+        const mergedUsers = [...remoteUsers];
+        for (const lu of localUsers) {
+          const clean = lu.phone.replace(/[\s-]/g, '');
+          if (!remoteUserMap.has(clean)) {
+            mergedUsers.push(lu);
+            saveUserToSupabase(lu).catch(console.warn);
+          }
+        }
+        saveUsers(mergedUsers);
+
+        // Update active session if credentials match
+        const active = getActiveUserSession();
+        if (active) {
+          const found = mergedUsers.find(
+            (u) => u.phone.replace(/[\s-]/g, '') === active.phone.replace(/[\s-]/g, '')
+          );
+          if (found) {
+            saveActiveUserSession(found);
+            setCurrentUser(found);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase sync notice:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Load Data on Mount, initial sync & start background poll interval
   useEffect(() => {
     const loadedProps = getStoredProperties();
     const loadedRequests = getStoredUnlockRequests();
@@ -144,6 +234,16 @@ export default function App() {
     setUnlockRequests(loadedRequests);
     setBannedPhones(loadedBanned);
     setReportedBrokers(loadedReports);
+
+    // Initial Live Sync from Supabase
+    syncFromSupabase();
+
+    // Regular polling every 10 seconds so new submissions/payments from any device appear immediately
+    const interval = setInterval(() => {
+      syncFromSupabase();
+    }, 10000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Save changes to localStorage
@@ -200,24 +300,73 @@ export default function App() {
 
   // Add New Property (from PostHouseModal)
   const handleAddProperty = (newProp: Property) => {
-    const updated = [newProp, ...properties];
+    // If admin is posting, bypass pending status directly to active
+    const finalProp: Property = {
+      ...newProp,
+      status: isAdminPosting || newProp.status === 'active' ? 'active' : 'pending',
+    };
+
+    const updated = [finalProp, ...properties.filter((p) => p.id !== finalProp.id)];
     updatePropertiesState(updated);
+
+    // Save directly to Supabase
+    savePropertyToSupabase(finalProp).catch((err) => {
+      console.warn('Could not save property to Supabase:', err);
+    });
+
+    // If owner submitted with listing fee screenshot, create an unlock request for admin verification
+    if (finalProp.status === 'pending' && finalProp.sellerPaymentScreenshotUrl) {
+      const ownerListingReq: UnlockRequest = {
+        id: `req-owner-${finalProp.id}`,
+        type: 'owner_listing_fee',
+        requestType: 'owner_listing_fee',
+        propertyId: finalProp.id,
+        propertyTitle: finalProp.title,
+        propertyArea: finalProp.area,
+        buyerName: finalProp.ownerName,
+        buyerPhone: finalProp.ownerPhone,
+        paymentMethod: 'telebirr',
+        transactionRef: `OWNER-${finalProp.id.slice(-5)}`,
+        screenshotUrl: finalProp.sellerPaymentScreenshotUrl,
+        screenshotSizeKb: 80,
+        status: 'pending',
+        amountBirr: finalProp.sellerListingFeeBirr || 150,
+        remainingUnlocks: 0,
+        createdAt: new Date().toISOString(),
+      };
+      const updatedReqs = [ownerListingReq, ...unlockRequests.filter((r) => r.id !== ownerListingReq.id)];
+      updateRequestsState(updatedReqs);
+      saveUnlockRequestToSupabase(ownerListingReq).catch(console.warn);
+    }
+
     showToast(
       currentLang === 'am'
-        ? 'ቤቱ በተሳካ ሁኔታ ተለጥፏል! ፎቶዎች በትንሽ ዳታ ተጨመቀዋል።'
-        : 'House listing published successfully with compressed photos!'
+        ? (finalProp.status === 'active'
+            ? 'ቤቱ በቀጥታ ወደ ዝርዝሩ ተለጥፏል!'
+            : 'የቤቱ መረጃ እና ክፍያ ተልኳል! አድሚኑ ሲፈትሸው ወደ ዝርዝር ይገባል።')
+        : (finalProp.status === 'active'
+            ? 'Property posted directly to live listings!'
+            : 'House listing submitted! Will be live once admin verifies payment.')
     );
+    setIsAdminPosting(false);
+    setPrefilledOwnerPhone('');
     setActiveTab('browse');
   };
 
   // Submit Unlock or Package Request
   const handleSubmitUnlockRequest = (newReq: UnlockRequest) => {
-    const updated = [newReq, ...unlockRequests];
+    const updated = [newReq, ...unlockRequests.filter((r) => r.id !== newReq.id)];
     updateRequestsState(updated);
     if (newReq.buyerPhone) {
       setUserPhone(newReq.buyerPhone);
       saveUserPhone(newReq.buyerPhone);
     }
+
+    // Save to Supabase immediately so admin panel on ANY device sees it!
+    saveUnlockRequestToSupabase(newReq).catch((err) => {
+      console.warn('Could not save unlock request to Supabase:', err);
+    });
+
     showToast(
       currentLang === 'am'
         ? `${newReq.amountBirr || 150} ብር የከፈሉበት ስክሪንሽት ለአድሚኑ ተልኳል! እንደጸደቀ ይሰራልዎታል።`
@@ -230,12 +379,17 @@ export default function App() {
     const targetReq = unlockRequests.find((r) => r.id === requestId);
     if (!targetReq) return;
 
+    const approvedReq: UnlockRequest = {
+      ...targetReq,
+      status: 'approved' as const,
+      approvedAt: new Date().toISOString(),
+    };
+
     const updated = unlockRequests.map((r) =>
-      r.id === requestId
-        ? { ...r, status: 'approved' as const, approvedAt: new Date().toISOString() }
-        : r
+      r.id === requestId ? approvedReq : r
     );
     updateRequestsState(updated);
+    saveUnlockRequestToSupabase(approvedReq).catch(console.warn);
 
     // Process based on request type
     if (targetReq.type === 'owner_listing_fee' && targetReq.propertyId) {
@@ -244,6 +398,10 @@ export default function App() {
         p.id === targetReq.propertyId ? { ...p, status: 'active' as const } : p
       );
       updatePropertiesState(updatedProps);
+      const approvedProp = updatedProps.find((p) => p.id === targetReq.propertyId);
+      if (approvedProp) {
+        savePropertyToSupabase(approvedProp).catch(console.warn);
+      }
     } else {
       // User unlock request (5 homes in similar price range)
       // 1. Directly unlock the requested property if present
@@ -275,6 +433,10 @@ export default function App() {
       ) {
         setCurrentUser(result.updatedUser);
       }
+
+      if (result.updatedUser) {
+        saveUserToSupabase(result.updatedUser).catch(console.warn);
+      }
     }
 
     showToast(
@@ -293,6 +455,8 @@ export default function App() {
     const res = unlockPropertyWithCredit(currentUser.id, property.id, property.price);
     if (res.success && res.updatedUser) {
       setCurrentUser(res.updatedUser);
+      saveUserToSupabase(res.updatedUser).catch(console.warn);
+      saveUserUnlockedPropertyToSupabase(currentUser.phone, property.id).catch(console.warn);
       showToast(
         currentLang === 'am'
           ? `ተሳክቷል! የባለቤቱ ስልክ ተከፍቷል (${res.updatedUser.packages.reduce((sum, p) => sum + p.remainingUnlocks, 0)} ቀሪ ክሬዲት አለዎት)`
@@ -310,12 +474,21 @@ export default function App() {
 
   // Admin Reject Request
   const handleRejectRequest = (requestId: string, note?: string) => {
+    const targetReq = unlockRequests.find((r) => r.id === requestId);
+    if (!targetReq) return;
+
+    const rejectedReq: UnlockRequest = {
+      ...targetReq,
+      status: 'rejected' as const,
+      adminNote: note,
+    };
+
     const updated = unlockRequests.map((r) =>
-      r.id === requestId
-        ? { ...r, status: 'rejected' as const, adminNote: note }
-        : r
+      r.id === requestId ? rejectedReq : r
     );
     updateRequestsState(updated);
+    saveUnlockRequestToSupabase(rejectedReq).catch(console.warn);
+
     showToast(
       currentLang === 'am' ? 'ስክሪንሽቱ ውድቅ ተደርጓል።' : 'Screenshot rejected.'
     );
@@ -327,6 +500,9 @@ export default function App() {
       p.id === propertyId ? { ...p, status: 'occupied' as const } : p
     );
     updatePropertiesState(updated);
+    const prop = updated.find((p) => p.id === propertyId);
+    if (prop) savePropertyToSupabase(prop).catch(console.warn);
+
     showToast(
       currentLang === 'am'
         ? 'የቤቱ ሁኔታ "ተከራይቷል/ተሽጧል" ተብሎ ተቀይሯል።'
@@ -343,6 +519,9 @@ export default function App() {
         : p
     );
     updatePropertiesState(updated);
+    const prop = updated.find((p) => p.id === propertyId);
+    if (prop) savePropertyToSupabase(prop).catch(console.warn);
+
     showToast(
       currentLang === 'am'
         ? 'ቤቱ ለተጨማሪ 7 ቀናት ታድሷል!'
@@ -354,6 +533,7 @@ export default function App() {
   const handleDeleteProperty = (propertyId: string) => {
     const updated = properties.filter((p) => p.id !== propertyId);
     updatePropertiesState(updated);
+    deletePropertyFromSupabase(propertyId).catch(console.warn);
     showToast(
       currentLang === 'am' ? 'ቤቱ ከዳታቤዝ ተሰርዟል።' : 'Property deleted from database.'
     );
@@ -724,15 +904,19 @@ export default function App() {
         }}
       />
 
-      {/* 2. Post House Modal (Owner) */}
+      {/* 2. Post House Modal (Owner & Admin Direct) */}
       <PostHouseModal
         isOpen={isPostModalOpen}
         onClose={() => {
           setIsPostModalOpen(false);
+          setIsAdminPosting(false);
+          setPrefilledOwnerPhone('');
           if (activeTab === 'post') setActiveTab('browse');
         }}
         currentLang={currentLang}
         onAddProperty={handleAddProperty}
+        isAdminMode={isAdminPosting}
+        initialOwnerPhone={prefilledOwnerPhone}
       />
 
       {/* 3. Unlock Payment & Package Purchase Modal */}
@@ -748,7 +932,7 @@ export default function App() {
         onSubmitUnlockRequest={handleSubmitUnlockRequest}
       />
 
-      {/* 4. Owner Management Modal (Occupied deal & 7-day renewal) */}
+      {/* 4. Owner Management Modal (Occupied deal & 7-day renewal & Add New Home) */}
       <OwnerManageModal
         isOpen={isOwnerManageModalOpen}
         onClose={() => {
@@ -762,6 +946,12 @@ export default function App() {
         onRenewProperty={handleRenewProperty}
         onDeleteProperty={handleDeleteProperty}
         initialProperty={selectedPropertyForOwnerManage}
+        onAddNewHome={(ownerPhone) => {
+          setIsOwnerManageModalOpen(false);
+          setPrefilledOwnerPhone(ownerPhone || '');
+          setIsAdminPosting(false);
+          setIsPostModalOpen(true);
+        }}
       />
 
       {/* 5. Admin Panel Modal */}
@@ -786,6 +976,12 @@ export default function App() {
         onBanPhone={handleBanPhone}
         onUnbanPhone={handleUnbanPhone}
         onResolveReport={handleResolveReport}
+        onManualSync={syncFromSupabase}
+        onOpenPostPropertyAsAdmin={() => {
+          setIsAdminPanelOpen(false);
+          setIsAdminPosting(true);
+          setIsPostModalOpen(true);
+        }}
       />
 
       {/* 6. My Requests & Unlocked Contacts Modal */}

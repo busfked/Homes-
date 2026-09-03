@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Upload,
@@ -43,7 +43,9 @@ interface PostHouseModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentLang: Language;
-  onAddProperty: (newProp: Property) => void;
+  onAddProperty: (newProp: Property, isAdminDirect?: boolean) => void;
+  isAdminMode?: boolean;
+  initialOwnerPhone?: string;
 }
 
 export const PostHouseModal: React.FC<PostHouseModalProps> = ({
@@ -51,11 +53,18 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
   onClose,
   currentLang,
   onAddProperty,
+  isAdminMode = false,
+  initialOwnerPhone = '',
 }) => {
   if (!isOpen) return null;
 
   const t = translations[currentLang];
   const adminSettings = getStoredSettings();
+  const [isAdminPost, setIsAdminPost] = useState(isAdminMode);
+
+  useEffect(() => {
+    setIsAdminPost(isAdminMode);
+  }, [isAdminMode]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const sellerReceiptInputRef = useRef<HTMLInputElement>(null);
   const nationalIdInputRef = useRef<HTMLInputElement>(null);
@@ -126,6 +135,12 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       setRecognizedOwner(null);
     }
   };
+
+  useEffect(() => {
+    if (initialOwnerPhone) {
+      handleOwnerPhoneChange(initialOwnerPhone);
+    }
+  }, [initialOwnerPhone]);
 
   // Seller listing fee payment
   const [sellerPaymentMethod, setSellerPaymentMethod] = useState<PaymentMethod>('telebirr');
@@ -242,16 +257,16 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (uploadedImages.length < 2) {
+    if (uploadedImages.length < 1) {
       setErrorMsg(
         currentLang === 'am'
-          ? 'እባክዎ ቢያንስ 2 ፎቶዎችን ያስገቡ።'
-          : 'Please upload at least 2 photos (2-3 recommended).'
+          ? 'እባክዎ ቢያንስ 1 ፎቶ ያስገቡ።'
+          : 'Please upload at least 1 photo.'
       );
       return;
     }
 
-    if (!nationalIdImage && (!recognizedOwner || !recognizedOwner.nationalIdFrontUrl)) {
+    if (!isAdminPost && !nationalIdImage && (!recognizedOwner || !recognizedOwner.nationalIdFrontUrl)) {
       setErrorMsg(
         currentLang === 'am'
           ? 'እባክዎ የባለቤትነት ማረጋገጫ የመታወቂያ ፊት ፎቶ (National ID Front Photo) ያስገቡ።'
@@ -267,7 +282,7 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       return;
     }
 
-    if (!ownerPhone.trim() || ownerPhone.trim().length < 9) {
+    if (!isAdminPost && (!ownerPhone.trim() || ownerPhone.trim().length < 9)) {
       setErrorMsg(
         currentLang === 'am'
           ? 'እባክዎ ትክክለኛ ስልክ ቁጥር ያስገቡ።'
@@ -276,7 +291,7 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       return;
     }
 
-    if (!ownerPin.trim() || ownerPin.trim().length < 4) {
+    if (!isAdminPost && (!ownerPin.trim() || ownerPin.trim().length < 4)) {
       setErrorMsg(
         currentLang === 'am'
           ? 'እባክዎ 4 አሃዝ ሚስጥር ቁጥር (PIN) ያስገቡ።'
@@ -297,8 +312,8 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
     // Tiered Listing Fee calculation
     const calculatedListingFee = calculateOwnerListingFee(Number(price) || 0, listingType, category);
 
-    // Validate listing fee payment screenshot or reference
-    if (!sellerReceiptImage && !sellerReceiptRef.trim()) {
+    // Validate listing fee payment screenshot or reference (only for regular owners)
+    if (!isAdminPost && !sellerReceiptImage && !sellerReceiptRef.trim()) {
       setErrorMsg(
         currentLang === 'am'
           ? `እባክዎ የ ${calculatedListingFee} ብር የማስመዝገቢያ ክፍያ ስክሪንሽት ወይም የግብይት ቁጥር ያስገቡ።`
@@ -355,11 +370,11 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       listingType: listingType,
       price: Number(price),
       pricePeriod: listingType === 'rent' ? pricePeriod : 'total',
-      sellerListingFeeBirr: calculatedListingFee,
-      sellerPaymentScreenshotUrl: sellerReceiptImage || undefined,
-      sellerPaymentMethod: sellerPaymentMethod,
-      sellerTransactionRef: sellerReceiptRef.trim() || undefined,
-      status: 'pending', // Sent to admin for screenshot verification
+      sellerListingFeeBirr: isAdminPost ? 0 : calculatedListingFee,
+      sellerPaymentScreenshotUrl: isAdminPost ? undefined : (sellerReceiptImage || undefined),
+      sellerPaymentMethod: isAdminPost ? undefined : sellerPaymentMethod,
+      sellerTransactionRef: isAdminPost ? 'ADMIN_DIRECT_POST' : (sellerReceiptRef.trim() || undefined),
+      status: isAdminPost ? 'active' : 'pending', // Admin posts directly as active!
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
       viewCount: 0,
@@ -367,9 +382,9 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       images: uploadedImages.length > 0 ? uploadedImages : [],
       nationalIdFrontUrl: nationalIdImage || undefined,
       nationalIdSizeKb: nationalIdSizeKb || undefined,
-      ownerName: ownerName.trim() || 'Owner',
-      ownerPhone: ownerPhone.trim(),
-      ownerPin: ownerPin.trim(),
+      ownerName: ownerName.trim() || (isAdminPost ? 'Bet Delala Admin' : 'Owner'),
+      ownerPhone: ownerPhone.trim() || (isAdminPost ? '0911000000' : ''),
+      ownerPin: ownerPin.trim() || (isAdminPost ? '0000' : ''),
       // Home
       propertyType: category === 'home' ? propertyType : undefined,
       bedrooms: category === 'home' ? Number(bedrooms) : undefined,
@@ -392,13 +407,15 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       operatingHours: category === 'machinery' && machineryHours ? Number(machineryHours) : undefined,
     };
 
-    saveOwnerProfile(ownerPhone, {
-      name: ownerName.trim(),
-      pin: ownerPin.trim(),
-      nationalIdFrontUrl: nationalIdImage || recognizedOwner?.nationalIdFrontUrl,
-    });
+    if (!isAdminPost && ownerPhone.trim()) {
+      saveOwnerProfile(ownerPhone, {
+        name: ownerName.trim(),
+        pin: ownerPin.trim(),
+        nationalIdFrontUrl: nationalIdImage || recognizedOwner?.nationalIdFrontUrl,
+      });
+    }
 
-    onAddProperty(newProperty);
+    onAddProperty(newProperty, isAdminPost);
     onClose();
   };
 
@@ -985,8 +1002,27 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
             </div>
           </div>
 
-          {/* 7. TIERED OWNER LISTING FEE NOTICE */}
-          {(() => {
+          {/* 7. TIERED OWNER LISTING FEE NOTICE (Hidden for Admin Direct Post) */}
+          {isAdminPost ? (
+            <div className="p-4 sm:p-5 bg-emerald-500/15 dark:bg-emerald-950/50 border-2 border-emerald-500/50 rounded-2xl flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                <Check className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-sm flex items-center gap-1.5">
+                  <span>👑 {currentLang === 'am' ? 'የአድሚን ቀጥታ መልቀቂያ (Admin Direct Post)' : 'Admin Direct Posting Mode'}</span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black">
+                    {currentLang === 'am' ? 'ቀጥታ ይለጠፋል' : 'Direct Live'}
+                  </span>
+                </h4>
+                <p className="text-xs text-stone-600 dark:text-stone-300 leading-relaxed">
+                  {currentLang === 'am'
+                    ? 'እንደ አድሚን ስለሆኑ ክፍያ መክፈልም ሆነ ስክሪንሽት ማያያዝ አያስፈልግዎትም። "ወዲያውኑ በቀጥታ ይለጥፉ" የሚለውን ሲጫኑ ቤቱ በቅጽበት በገበያው ላይ ይለቀቃል!'
+                    : 'As administrator, no listing fee payment or receipt screenshot is required. This listing will be published directly as active to the public catalog upon submission!'}
+                </p>
+              </div>
+            </div>
+          ) : (() => {
             const calculatedFee = calculateOwnerListingFee(Number(price) || 0, listingType, category);
             return (
               <div className="p-4 sm:p-5 bg-emerald-500/10 dark:bg-emerald-950/40 border-2 border-emerald-500/40 rounded-2xl space-y-3">
@@ -1302,10 +1338,18 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
               id="submit-property-btn"
               type="submit"
               disabled={isCompressing}
-              className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-2xl text-base font-extrabold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className={`w-full py-4 px-6 text-white rounded-2xl text-base font-extrabold shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 active:scale-98 ${
+                isAdminPost
+                  ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
+                  : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20'
+              }`}
             >
               <Check className="w-5 h-5" />
-              <span>{t.submitListingBtn}</span>
+              <span>
+                {isAdminPost
+                  ? (currentLang === 'am' ? '🚀 ወዲያውኑ በቀጥታ ይለጥፉ (Publish Live Directly)' : '🚀 Publish Live Directly (No Review Needed)')
+                  : t.submitListingBtn}
+              </span>
             </button>
           </div>
         </form>

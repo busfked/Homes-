@@ -135,7 +135,13 @@ export async function fetchPropertiesFromSupabase(): Promise<Property[] | null> 
       bedrooms: row.bedrooms || 1,
       bathrooms: row.bathrooms || 1,
       areaSqMeters: row.area_sq_meters,
-      images: Array.isArray(row.images) ? row.images : [],
+      images: Array.isArray(row.images)
+        ? row.images.map((img: any) =>
+            typeof img === 'string'
+              ? { url: img, originalSizeKb: 120, compressedSizeKb: 35 }
+              : img
+          )
+        : [],
       nationalIdFrontUrl: row.national_id_front_url,
       ownerPhone: row.owner_phone,
       ownerName: row.owner_name,
@@ -178,7 +184,7 @@ export async function savePropertyToSupabase(prop: Property): Promise<boolean> {
       bedrooms: prop.bedrooms,
       bathrooms: prop.bathrooms,
       area_sq_meters: prop.areaSqMeters,
-      images: prop.images || [],
+      images: (prop.images || []).map((img: any) => (typeof img === 'string' ? img : img.url)),
       national_id_front_url: prop.nationalIdFrontUrl,
       owner_phone: prop.ownerPhone,
       owner_name: prop.ownerName,
@@ -401,6 +407,28 @@ export async function deleteUserFromSupabase(phoneOrId: string): Promise<boolean
     return true;
   } catch (err) {
     console.warn('deleteUserFromSupabase error:', err);
+    return false;
+  }
+}
+
+export async function saveUserUnlockedPropertyToSupabase(userPhone: string, propertyId: string): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+
+  try {
+    const clean = userPhone.trim().replace(/[\s-]/g, '');
+    const { data: userRow } = await supabase.from('users').select('*').eq('phone', clean).maybeSingle();
+    if (!userRow) return false;
+
+    const currentIds: string[] = Array.isArray(userRow.unlocked_property_ids) ? userRow.unlocked_property_ids : [];
+    if (!currentIds.includes(propertyId)) {
+      currentIds.push(propertyId);
+      const { error } = await supabase.from('users').update({ unlocked_property_ids: currentIds }).eq('phone', clean);
+      if (error) return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('saveUserUnlockedPropertyToSupabase error:', err);
     return false;
   }
 }

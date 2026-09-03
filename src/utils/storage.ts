@@ -400,7 +400,9 @@ export function deductUserCreditAndUnlock(
   const pkgIdx = user.packages.findIndex(p => {
     if (p.remainingUnlocks <= 0) return false;
     if (p.tierId === 'tier_unlimited') return true;
-    if (listingType === 'sale') return false;
+    if (listingType === 'sale') {
+      return p.tierId === 'tier_sale' || p.maxPrice >= 500000;
+    }
     return propertyPrice <= p.maxPrice;
   });
 
@@ -863,6 +865,10 @@ ALTER TABLE public.reported_brokers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.banned_phones ENABLE ROW LEVEL SECURITY;
 
 -- Properties Policies
+DROP POLICY IF EXISTS "Public read active properties" ON public.properties;
+DROP POLICY IF EXISTS "Public insert properties" ON public.properties;
+DROP POLICY IF EXISTS "Public update properties" ON public.properties;
+DROP POLICY IF EXISTS "Public delete properties" ON public.properties;
 DROP POLICY IF EXISTS "Public Read Properties" ON public.properties;
 DROP POLICY IF EXISTS "Public Insert Properties" ON public.properties;
 DROP POLICY IF EXISTS "Public Update Properties" ON public.properties;
@@ -873,6 +879,7 @@ CREATE POLICY "Public Update Properties" ON public.properties FOR UPDATE USING (
 CREATE POLICY "Public Delete Properties" ON public.properties FOR DELETE USING (true);
 
 -- Unlock Requests Policies
+DROP POLICY IF EXISTS "Public request operations" ON public.unlock_requests;
 DROP POLICY IF EXISTS "Public Read Unlock Requests" ON public.unlock_requests;
 DROP POLICY IF EXISTS "Public Insert Unlock Requests" ON public.unlock_requests;
 DROP POLICY IF EXISTS "Public Update Unlock Requests" ON public.unlock_requests;
@@ -883,6 +890,7 @@ CREATE POLICY "Public Update Unlock Requests" ON public.unlock_requests FOR UPDA
 CREATE POLICY "Public Delete Unlock Requests" ON public.unlock_requests FOR DELETE USING (true);
 
 -- Users Policies (Allows user creation, updates, and admin space-saving deletion)
+DROP POLICY IF EXISTS "Public user operations" ON public.users;
 DROP POLICY IF EXISTS "Public Read Users" ON public.users;
 DROP POLICY IF EXISTS "Public Insert Users" ON public.users;
 DROP POLICY IF EXISTS "Public Update Users" ON public.users;

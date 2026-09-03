@@ -410,7 +410,12 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
           ) : (() => {
             // Check if user has an active package that covers this property's price range
             const matchingPackage = currentUser?.packages?.find(
-              (p) => p.remainingUnlocks > 0 && (p.tierId === 'tier_unlimited' || (property.listingType !== 'sale' && property.price <= p.maxPrice))
+              (p) =>
+                p.remainingUnlocks > 0 &&
+                (p.tierId === 'tier_unlimited' ||
+                  (property.listingType === 'sale'
+                    ? p.tierId === 'tier_sale' || p.maxPrice >= 500000
+                    : property.price <= p.maxPrice))
             );
 
             if (matchingPackage) {
