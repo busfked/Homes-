@@ -49,7 +49,7 @@ interface WelcomeDashboardProps {
   onOpenOwnerManage?: () => void;
   currentUser?: UserAccount | null;
   onOpenUserAuthModal?: () => void;
-  onOpenBuyPackage?: () => void;
+  onViewRequestsClick?: () => void;
 }
 
 export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
@@ -76,7 +76,7 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
   onOpenOwnerManage,
   currentUser,
   onOpenUserAuthModal,
-  onOpenBuyPackage,
+  onViewRequestsClick,
 }) => {
   const t = translations[currentLang];
 
@@ -204,60 +204,53 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               <div className="flex items-center justify-between">
                 <span className="px-3 py-1 rounded-full bg-indigo-500/30 text-indigo-200 text-[11px] font-black uppercase tracking-wider backdrop-blur-xs flex items-center gap-1.5 border border-indigo-400/30">
                   <User className="w-3.5 h-3.5" />
-                  <span>{currentLang === 'am' ? 'የፈላጊዎች ፖርታል' : 'Finder & Buyer Portal'}</span>
+                  <span>{currentLang === 'am' ? 'የፈላጊዎች እና የገዢዎች ፖርታል' : 'Finder & Buyer Portal'}</span>
                 </span>
                 {currentUser ? (
-                  <span className="text-[11px] text-emerald-300 font-bold bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>{currentUser.name} ({currentUser.packages?.reduce((sum, p) => sum + p.remainingUnlocks, 0) || 0} {currentLang === 'am' ? 'ክሬዲት' : 'Credits'})</span>
+                  <span className="text-[11px] text-emerald-300 font-bold bg-emerald-950/80 px-2.5 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{currentUser.name} • {currentUser.unlockedPropertyIds?.length || 0} {currentLang === 'am' ? 'የተከፈቱ ቤቶች' : 'Unlocked'}</span>
                   </span>
                 ) : (
-                  <span className="text-[11px] text-indigo-300 font-bold bg-indigo-950/60 px-2 py-0.5 rounded-lg border border-indigo-500/20">
-                    {currentLang === 'am' ? 'የ5 ቤት ፓኬጅ በ 150 ብር' : '5-House Pack 150 ETB'}
+                  <span className="text-[11px] text-indigo-200 font-bold bg-indigo-950/70 px-2.5 py-0.5 rounded-lg border border-indigo-400/30">
+                    {currentLang === 'am' ? 'በስልክ እና ፓስወርድ መመዝገቢያ' : 'Phone & Password'}
                   </span>
                 )}
               </div>
               <h3 className="font-black text-lg sm:text-xl text-white">
-                {currentLang === 'am' ? 'የቤት ወይም የመኪና ፈላጊ መግቢያ / ምዝገባ' : 'Finder Login & 5-Unlock Packages'}
+                {currentUser
+                  ? (currentLang === 'am' ? `እንኳን ደህና መጡ ${currentUser.name}!` : `Welcome back, ${currentUser.name}!`)
+                  : (currentLang === 'am' ? 'የቤት ወይም የመኪና ፈላጊ ምዝገባ / መግቢያ' : 'Finder Registration & Login')}
               </h3>
               <p className="text-xs sm:text-sm text-stone-300 leading-relaxed">
                 {currentLang === 'am'
-                  ? 'በስልክዎ ይመዝገቡ፤ የ5 ቤት እውቂያ ፓኬጅ ይግዙ። የተከፈቱ የባለቤት ስልኮች ለአካውንትዎ ብቻ ሚስጥራዊ ሆነው ይቀመጣሉ።'
-                  : 'Register with phone & PIN. Buy 5-house packages to view owner direct contacts privately in your account.'}
+                  ? 'በስልክዎ እና በፓስወርድዎ ይመዝገቡ። የሚፈልጉትን ቤት ሲያገኙ የቤቱን ደረጃ ክፍያ (150፣ 250፣ 350 ወይም 500 ብር) ከፍለው ስክሪንሽት ሲልኩ የባለቤቱ ስልክ ቁጥር እና ትክክለኛ መገኛ ወዲያውኑ ይከፈትልዎታል!'
+                  : 'Register once with your phone and password. When you find a house, pay the exact tier fee (150, 250, 350, or 500 ETB) and send a screenshot to unlock the owner contact!'}
               </p>
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-2.5">
-              {onOpenUserAuthModal && (
-                <button
-                  id="finder-portal-auth-btn"
-                  onClick={onOpenUserAuthModal}
-                  className="py-2.5 px-3 bg-indigo-500 hover:bg-indigo-600 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <User className="w-4 h-4 shrink-0" />
-                  <span>{currentUser ? (currentLang === 'am' ? 'አካውንቴን ክፈት' : 'My Account') : (currentLang === 'am' ? 'መግቢያ / ምዝገባ' : 'Login / Register')}</span>
-                </button>
-              )}
+              <button
+                id="finder-portal-auth-btn"
+                onClick={onOpenUserAuthModal}
+                className="py-2.5 px-3 bg-indigo-500 hover:bg-indigo-600 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <User className="w-4 h-4 shrink-0" />
+                <span>
+                  {currentUser
+                    ? (currentLang === 'am' ? 'መለያዬ / የተከፈቱ ቤቶች' : 'My Account & Unlocked')
+                    : (currentLang === 'am' ? 'መግቢያ / ምዝገባ' : 'Register / Login')}
+                </span>
+              </button>
 
-              {onOpenBuyPackage ? (
-                <button
-                  id="finder-portal-package-btn"
-                  onClick={onOpenBuyPackage}
-                  className="py-2.5 px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <PackageCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{currentLang === 'am' ? 'የ5 ቤት ፓኬጅ' : '5-Pack Credit'}</span>
-                </button>
-              ) : (
-                <button
-                  id="finder-portal-package-btn-fallback"
-                  onClick={onOpenUserAuthModal}
-                  className="py-2.5 px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                >
-                  <PackageCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>{currentLang === 'am' ? 'ክሬዲት ይግዙ' : 'Get Credits'}</span>
-                </button>
-              )}
+              <button
+                id="finder-portal-requests-btn"
+                onClick={onViewRequestsClick || onOpenUserAuthModal}
+                className="py-2.5 px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{currentLang === 'am' ? 'የተከፈቱ ቤቶች' : 'My Unlocked'}</span>
+              </button>
             </div>
           </div>
         </div>

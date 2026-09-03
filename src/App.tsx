@@ -491,6 +491,9 @@ export default function App() {
           totalListingsCount={filteredProperties.length}
           onPostHouseClick={() => setIsPostModalOpen(true)}
           onOpenOwnerManage={() => setIsOwnerManageModalOpen(true)}
+          currentUser={currentUser}
+          onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
+          onViewRequestsClick={() => setIsUserAuthModalOpen(true)}
         />
 
         {/* Listings Section */}
@@ -725,7 +728,6 @@ export default function App() {
         userPhone={userPhone}
         currentUser={currentUser}
         onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
-        onUseCredit={handleUseCreditToUnlock}
         onSubmitUnlockRequest={handleSubmitUnlockRequest}
       />
 

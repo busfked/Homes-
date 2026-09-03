@@ -1,10 +1,26 @@
 import React, { useState, useRef } from 'react';
-import { X, Copy, Check, Upload, ShieldCheck, AlertCircle, Sparkles, Building2, Phone, CreditCard, ShieldAlert, Ban, Layers, UserCheck, KeyRound } from 'lucide-react';
+import { 
+  X, 
+  Copy, 
+  Check, 
+  Upload, 
+  ShieldCheck, 
+  AlertCircle, 
+  Building2, 
+  Phone, 
+  CreditCard, 
+  ShieldAlert, 
+  Ban, 
+  User, 
+  Lock,
+  KeyRound,
+  CheckCircle2
+} from 'lucide-react';
 import { Property, Language, PaymentMethod, UnlockRequest, PaymentSettings, UserAccount } from '../types';
 import { translations } from '../data/translations';
 import { compressImage } from '../utils/imageCompressor';
-import { isPhoneBanned } from '../utils/storage';
-import { USER_PACKAGE_TIERS, getUserPackageTierForHousePrice } from '../utils/pricing';
+import { isPhoneBanned, loginOrRegisterUser } from '../utils/storage';
+import { calculateHouseUnlockFee, formatEtbPrice } from '../utils/pricing';
 
 interface UnlockPaymentModalProps {
   property: Property | null;
@@ -15,7 +31,6 @@ interface UnlockPaymentModalProps {
   userPhone: string;
   currentUser?: UserAccount | null;
   onOpenUserAuthModal?: () => void;
-  onUseCredit?: (property: Property) => void;
   onSubmitUnlockRequest: (request: UnlockRequest) => void;
 }
 
@@ -28,7 +43,6 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
   userPhone,
   currentUser,
   onOpenUserAuthModal,
-  onUseCredit,
   onSubmitUnlockRequest,
 }) => {
   if (!isOpen || !property) return null;
@@ -36,20 +50,8 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
   const t = translations[currentLang];
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Suggested tier for this house's price
-  const suggestedTier = getUserPackageTierForHousePrice(property.price);
-
-  // Single unlock base fee
-  const singleUnlockFee =
-    property.listingType === 'sale'
-      ? paymentSettings.feeAmountSaleBirr || 500
-      : paymentSettings.feeAmountRentBirr || 100;
-
-  const [unlockMode, setUnlockMode] = useState<'package' | 'single'>('package');
-  const [selectedTierId, setSelectedTierId] = useState<string>(suggestedTier.id);
-
-  const selectedTier = USER_PACKAGE_TIERS.find((tier) => tier.id === selectedTierId) || suggestedTier;
-  const effectiveFee = unlockMode === 'package' ? selectedTier.packagePriceBirr : singleUnlockFee;
+  // Exact tier unlock fee: 150, 250, 350, or 500 ETB (matching the home tier)
+  const unlockFee = calculateHouseUnlockFee(property.price, property.listingType, property.category);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('telebirr');
   const [buyerName, setBuyerName] = useState(currentUser?.name || '');
@@ -67,14 +69,12 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
   // Check if current phone is banned
   const isBanned = isPhoneBanned(buyerPhone);
 
-  // Copy helper
   const handleCopy = (text: string, field: string) => {
     navigator.clipboard.writeText(text);
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  // Handle Screenshot Upload with Instant Canvas Compression
   const handleScreenshotUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const file = files[0];
@@ -91,7 +91,6 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
     setErrorMsg('');
 
     try {
-      // Compress screenshot to ~35-65KB
       const result = await compressImage(file, 900, 1200, 0.7);
       setScreenshotDataUrl(result.dataUrl);
       setScreenshotSizeKb(result.compressedSizeKb);
@@ -106,7 +105,8 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!buyerPhone.trim() || buyerPhone.trim().length < 9) {
+    const cleanPhone = buyerPhone.trim().replace(/[\s-]/g, '');
+    if (!cleanPhone || cleanPhone.length < 9) {
       setErrorMsg(
         currentLang === 'am'
           ? 'እባክዎ ትክክለኛ ስልክ ቁጥርዎን ያስገቡ።'
@@ -115,10 +115,16 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
       return;
     }
 
-    if (isPhoneBanned(buyerPhone)) {
+    if (isPhoneBanned(cleanPhone)) {
       setErrorMsg(t.bannedAccountAlert);
       return;
     }
+
+    const cleanPin = buyerPin.trim() || '1234';
+    const cleanName = buyerName.trim() || 'Buyer';
+
+    // Auto register or login user with this phone & PIN
+    loginOrRegisterUser(cleanName, cleanPhone, cleanPin);
 
     if (!hasAgreedAntiDelala) {
       setErrorMsg(
@@ -132,29 +138,27 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
     if (!screenshotDataUrl) {
       setErrorMsg(
         currentLang === 'am'
-          ? `እባክዎ የ ${effectiveFee} ብር የክፍያ ስክሪንሽት ያስገቡ።`
-          : `Please upload your ${effectiveFee} ETB payment screenshot.`
+          ? `እባክዎ የ ${unlockFee} ብር የክፍያ ስክሪንሽት ያስገቡ።`
+          : `Please upload your ${unlockFee} ETB payment screenshot.`
       );
       return;
     }
 
     const newRequest: UnlockRequest = {
       id: `req-${Date.now().toString(36)}`,
-      type: unlockMode === 'package' ? 'package_purchase' : 'single_unlock',
-      packageTierId: unlockMode === 'package' ? selectedTier.id : undefined,
-      maxHousePrice: unlockMode === 'package' ? selectedTier.maxPrice : property.price,
-      remainingUnlocks: unlockMode === 'package' ? selectedTier.totalUnlocks : 1,
+      type: 'single_unlock',
+      requestType: 'single_unlock',
       propertyId: property.id,
       propertyTitle: property.title,
       propertyArea: property.area,
-      buyerName: buyerName.trim() || 'Buyer / Renter',
-      buyerPhone: buyerPhone.trim(),
+      buyerName: cleanName,
+      buyerPhone: cleanPhone,
       paymentMethod: paymentMethod,
       transactionRef: transactionRef.trim() || `TXN-${Date.now().toString().slice(-6)}`,
       screenshotUrl: screenshotDataUrl,
       screenshotSizeKb: screenshotSizeKb,
       status: 'pending',
-      amountBirr: effectiveFee,
+      amountBirr: unlockFee,
       createdAt: new Date().toISOString(),
     };
 
@@ -162,13 +166,12 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
     setIsSuccessSubmitted(true);
   };
 
-
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150">
       <div
         id="unlock-payment-modal"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-stone-900 w-full max-w-2xl rounded-3xl overflow-hidden shadow-2xl border border-stone-200 dark:border-stone-800 flex flex-col max-h-[94vh]"
+        className="bg-white dark:bg-stone-900 w-full max-w-xl rounded-3xl overflow-hidden shadow-2xl border border-stone-200 dark:border-stone-800 flex flex-col max-h-[94vh]"
       >
         {/* Top Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-stone-100 dark:border-stone-800 bg-emerald-500/10">
@@ -178,16 +181,12 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-black text-stone-900 dark:text-stone-100">
-                {unlockMode === 'package' ? (currentLang === 'am' ? 'የ 5 ቤቶች ጥቅል መግዣ' : '5-House Package Purchase') : t.unlockModalTitle} ({effectiveFee} {t.etb})
+                {currentLang === 'am' ? 'የባለቤቱን ስልክ መክፈቻ' : 'Unlock Owner Contact'} ({unlockFee} {t.etb})
               </h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                {unlockMode === 'package'
-                  ? (currentLang === 'am'
-                      ? `በ ${effectiveFee} ብር 5 የተለያዩ ቤቶች ሙሉ አድራሻ እና ስልክ ይክፈቱ (ለስልክዎ ብቻ)`
-                      : `Get direct owner contact info for 5 houses for ${effectiveFee} ETB (tied to your login)`)
-                  : (currentLang === 'am'
-                      ? `የ ${effectiveFee} ብር ክፍያ በቴሌብር ወይም በባንክ ፈጽመው ስክሪንሽት ያስገቡ።`
-                      : `Transfer ${effectiveFee} ETB via Telebirr or Bank & upload receipt.`)}
+                {currentLang === 'am'
+                  ? `የዚህን ቤት የባለቤት ስልክ እና ትክክለኛ መገኛ ለመክፈት ${unlockFee} ብር ይክፈሉ`
+                  : `Pay ${unlockFee} ETB to unlock this listing's direct owner contact`}
               </p>
             </div>
           </div>
@@ -209,18 +208,15 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
               {currentLang === 'am' ? 'ስክሪንሽቱ በተሳካ ሁኔታ ተልኳል!' : 'Screenshot Submitted!'}
             </h3>
             <p className="text-sm text-stone-600 dark:text-stone-400 max-w-md mx-auto leading-relaxed">
-              {unlockMode === 'package'
-                ? (currentLang === 'am'
-                    ? `የ ${effectiveFee} ብር የ 5 ቤቶች ጥቅል ክፍያዎ ለአድሚን ተልኳል። አድሚኑ እንደፈተሸው 5 የቤት መክፈቻ ክሬዲት ለስልክዎ (${buyerPhone}) ይገባል።`
-                    : `Your ${effectiveFee} ETB payment for 5 house unlocks was sent. Once approved, 5 house unlock credits will be added to your account (${buyerPhone}).`)
-                : (currentLang === 'am'
-                    ? `የ ${effectiveFee} ብር ክፍያዎ ለአድሚን ተልኳል። አድሚኑ እንደፈተሸው (በጥቂት ደቂቃዎች ውስጥ) የባለቤቱ ስልክ ቁጥር ለስልክዎ (${buyerPhone}) ይከፈታል።`
-                    : `Your ${effectiveFee} ETB receipt is sent to the admin. Once approved, the owner contact unlocks instantly for your phone (${buyerPhone}).`)}
+              {currentLang === 'am'
+                ? `የ ${unlockFee} ብር ክፍያ ስክሪንሽትዎ ለአስተዳዳሪው ደርሷል። አስተዳዳሪው እንደፈተሸው (በጥቂት ደቂቃዎች ውስጥ) የባለቤቱ ስልክ ቁጥር ለስልክዎ (${buyerPhone}) ይከፈታል!`
+                : `Your ${unlockFee} ETB screenshot has been sent to the admin. Once verified, the owner's direct contact will unlock for your phone (${buyerPhone})!`}
             </p>
 
             <div className="bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 p-4 rounded-2xl max-w-sm mx-auto text-xs text-stone-600 dark:text-stone-300">
               <span>{currentLang === 'am' ? 'የተጠየቀው ንብረት:' : 'Target Property:'}</span>
               <p className="font-bold text-stone-900 dark:text-white mt-0.5">{property.title}</p>
+              <p className="text-emerald-600 font-bold mt-1">{property.area} • {unlockFee} ETB</p>
             </div>
 
             <button
@@ -232,7 +228,7 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
           </div>
         ) : (
           /* PAYMENT FORM */
-          <form onSubmit={handleSubmit} className="overflow-y-auto p-5 sm:p-7 space-y-6">
+          <form onSubmit={handleSubmit} className="overflow-y-auto p-5 sm:p-7 space-y-5">
             {errorMsg && (
               <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-800 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -240,147 +236,34 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
               </div>
             )}
 
-            {/* ACTIVE CREDIT PACKAGE FAST UNLOCK CARD IF USER HAS VALID CREDITS */}
-            {(() => {
-              const matchingPackage = currentUser?.packages?.find(
-                (p) => p.remainingUnlocks > 0 && p.maxHousePrice >= property.price
-              );
-              const totalCredits =
-                currentUser?.packages?.reduce((sum, p) => sum + p.remainingUnlocks, 0) || 0;
-
-              if (matchingPackage) {
-                return (
-                  <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-emerald-700 to-teal-800 text-white shadow-xl space-y-3 border-2 border-emerald-400/40">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
-                        <span className="font-black text-sm sm:text-base">
-                          {currentLang === 'am' ? 'የ 5 ቤቶች ጥቅል አለዎት!' : '5-House Package Credit Available!'}
-                        </span>
-                      </div>
-                      <span className="px-3 py-1 rounded-full bg-white/20 text-xs font-black tracking-wider">
-                        {matchingPackage.remainingUnlocks} / 5 {currentLang === 'am' ? 'ይቀራል' : 'Remaining'}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-emerald-100 leading-relaxed">
-                      {currentLang === 'am'
-                        ? `በአካውንትዎ (${currentUser?.phone}) ውስጥ ለዚህ ዋጋ የሚሆን ንቁ ጥቅል አለዎት። አሁን ያለ ምንም ተጨማሪ ክፍያ ወዲያውኑ የባለቤቱን ስልክ መክፈት ይችላሉ።`
-                        : `You have active unlock credits for properties up to ${matchingPackage.maxHousePrice.toLocaleString()} ETB. Unlock this property immediately without waiting for payment verification.`}
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (onUseCredit) {
-                          onUseCredit(property);
-                          onClose();
-                        }
-                      }}
-                      className="w-full py-3.5 px-4 bg-white hover:bg-emerald-50 text-emerald-950 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md active:scale-98"
-                    >
-                      <Sparkles className="w-4 h-4 text-emerald-700" />
-                      <span>
-                        {currentLang === 'am'
-                          ? `⚡ በ 1 ክሬዲት ወዲያውኑ ክፈት (${matchingPackage.remainingUnlocks} ከ 5 ቀሪ)`
-                          : `⚡ Unlock Instantly with 1 Credit (${matchingPackage.remainingUnlocks}/5 left)`}
-                      </span>
-                    </button>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
-            {/* UNLOCK MODE SWITCHER: 5-House Package vs Single Unlock */}
-            <div className="bg-stone-100 dark:bg-stone-800 p-1 rounded-2xl grid grid-cols-2 gap-1 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setUnlockMode('package')}
-                className={`py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  unlockMode === 'package'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
-                }`}
-              >
-                <Layers className="w-4 h-4" />
-                <span>{currentLang === 'am' ? 'የ 5 ቤቶች ጥቅል (አዋጭ)' : '5 Houses Package (Best Value)'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setUnlockMode('single')}
-                className={`py-2.5 px-3 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                  unlockMode === 'single'
-                    ? 'bg-emerald-600 text-white shadow-xs'
-                    : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>{currentLang === 'am' ? 'ለ 1 ቤት ብቻ' : 'Single House Unlock'}</span>
-              </button>
-            </div>
-
-            {/* PACKAGE SELECTION TIERS IF IN PACKAGE MODE */}
-            {unlockMode === 'package' && (
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-stone-800 dark:text-stone-200">
-                  {currentLang === 'am' ? 'የ 5 ቤቶች ጥቅል ዋጋ ይምረጡ (5 ቤቶች ይከፈቱልዎታል)' : 'Select 5-House Package Tier (Unlocks 5 Houses):'}
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {USER_PACKAGE_TIERS.map((tier) => (
-                    <button
-                      key={tier.id}
-                      type="button"
-                      onClick={() => setSelectedTierId(tier.id)}
-                      className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                        selectedTier.id === tier.id
-                          ? 'border-emerald-500 bg-emerald-50/80 dark:bg-emerald-950/50 ring-2 ring-emerald-500/30'
-                          : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-850 hover:bg-stone-50 dark:hover:bg-stone-800'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-extrabold text-stone-900 dark:text-white text-xs">
-                          {currentLang === 'am' ? tier.nameAm : tier.nameEn}
-                        </span>
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white font-black text-xs">
-                          {tier.packagePriceBirr} ETB
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-stone-500 dark:text-stone-400">
-                        {currentLang === 'am' ? tier.descriptionAm : tier.descriptionEn}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Targeted Property summary */}
-            <div className="bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-xs">
+            {/* Targeted Property & Direct Unlock Fee Banner */}
+            <div className="bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 p-4 rounded-2xl flex items-center justify-between gap-3 text-xs">
               <div className="truncate">
                 <span className="text-stone-400 dark:text-stone-500 block font-medium">
                   {currentLang === 'am' ? 'የተመረጠው ቤት' : 'Target House'}
                 </span>
-                <p className="font-bold text-stone-900 dark:text-stone-100 truncate">
+                <p className="font-extrabold text-stone-900 dark:text-stone-100 text-sm truncate">
                   {currentLang === 'am' && property.titleAm ? property.titleAm : property.title}
                 </p>
                 <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                  {property.area} • {property.listingType === 'sale' ? t.sale : t.rent}
+                  {property.area} • {formatEtbPrice(property.price, property.pricePeriod, currentLang)}
                 </span>
               </div>
-              <div className="text-right shrink-0">
-                <span className="text-xs text-stone-500 dark:text-stone-400 block">{currentLang === 'am' ? 'የሚከፈለው ክፍያ' : 'Payment Amount'}</span>
-                <span className="text-lg font-black text-stone-950 dark:text-white font-sans">
-                  {effectiveFee} <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{t.etb}</span>
+              <div className="text-right shrink-0 bg-white dark:bg-stone-900 px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700">
+                <span className="text-[10px] text-stone-500 dark:text-stone-400 block font-bold uppercase tracking-wider">
+                  {currentLang === 'am' ? 'የመክፈቻ ክፍያ' : 'Unlock Fee'}
+                </span>
+                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                  {unlockFee} <span className="text-xs font-bold text-stone-700 dark:text-stone-300">{t.etb}</span>
                 </span>
               </div>
             </div>
 
-            {/* STEP 1: PAYMENT METHOD SELECTOR & BANK DETAILS */}
+            {/* STEP 1: PAYMENT METHOD SELECTOR & OFFICIAL ACCOUNTS */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-xs font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-wider">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] flex items-center justify-center">1</span>
-                <span>{currentLang === 'am' ? `ደረጃ 1፡ ${effectiveFee} ብር ይክፈሉ` : `Step 1: Transfer ${effectiveFee} ETB`}</span>
+                <span>{currentLang === 'am' ? `ደረጃ 1፡ ${unlockFee} ብር ይክፈሉ` : `Step 1: Transfer ${unlockFee} ETB`}</span>
               </div>
 
               {/* Payment Method Tabs (Telebirr, CBE, BOA) */}
@@ -425,28 +308,28 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
                 </button>
               </div>
 
-              {/* Selected Bank Information Card with Copy Buttons */}
-              <div className="bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 rounded-2xl p-4 space-y-2.5 text-xs">
+              {/* Selected Bank Information Card with 1-Click Copy */}
+              <div className="bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 rounded-2xl p-4 space-y-2 text-xs">
                 {paymentMethod === 'telebirr' && (
                   <>
                     <div className="flex items-center justify-between">
-                      <span className="text-stone-500 dark:text-stone-400">Telebirr ቁጥር:</span>
+                      <span className="text-stone-500 dark:text-stone-400 font-medium">Telebirr ቁጥር:</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-stone-900 dark:text-white text-sm">
+                        <span className="font-mono font-black text-stone-900 dark:text-white text-base">
                           {paymentSettings.telebirrNumber || '0991154337'}
                         </span>
                         <button
                           type="button"
                           onClick={() => handleCopy(paymentSettings.telebirrNumber || '0991154337', 'tb')}
-                          className="px-2.5 py-1 bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 rounded text-[10px] font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 cursor-pointer"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
                         >
                           {copiedField === 'tb' ? t.copiedText : t.copyBtn}
                         </button>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-stone-500 dark:text-stone-400">{t.accountName}</span>
-                      <span className="font-bold text-stone-800 dark:text-stone-200">{paymentSettings.telebirrName || 'E-Gojo Admin'}</span>
+                    <div className="flex items-center justify-between text-stone-500 dark:text-stone-400">
+                      <span>{t.accountName}:</span>
+                      <span className="font-bold text-stone-800 dark:text-stone-200">{paymentSettings.telebirrName || 'BetDelala (0991154337)'}</span>
                     </div>
                   </>
                 )}
@@ -454,23 +337,23 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
                 {paymentMethod === 'cbe' && (
                   <>
                     <div className="flex items-center justify-between">
-                      <span className="text-stone-500 dark:text-stone-400">CBE (የኢትዮጵያ ንግድ ባንክ):</span>
+                      <span className="text-stone-500 dark:text-stone-400 font-medium">CBE (ንግድ ባንክ):</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-stone-900 dark:text-white text-sm">
+                        <span className="font-mono font-black text-stone-900 dark:text-white text-base">
                           {paymentSettings.cbeAccount || '1000131638128'}
                         </span>
                         <button
                           type="button"
                           onClick={() => handleCopy(paymentSettings.cbeAccount || '1000131638128', 'cbe')}
-                          className="px-2.5 py-1 bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 rounded text-[10px] font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 cursor-pointer"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
                         >
                           {copiedField === 'cbe' ? t.copiedText : t.copyBtn}
                         </button>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-stone-500 dark:text-stone-400">{t.accountName}</span>
-                      <span className="font-bold text-stone-800 dark:text-stone-200">{paymentSettings.cbeName || 'E-Gojo Verified'}</span>
+                    <div className="flex items-center justify-between text-stone-500 dark:text-stone-400">
+                      <span>{t.accountName}:</span>
+                      <span className="font-bold text-stone-800 dark:text-stone-200">{paymentSettings.cbeName || 'BetDelala (CBE)'}</span>
                     </div>
                   </>
                 )}
@@ -478,40 +361,40 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
                 {paymentMethod === 'boa' && (
                   <>
                     <div className="flex items-center justify-between">
-                      <span className="text-stone-500 dark:text-stone-400">Bank of Abyssinia (አቢሲኒያ):</span>
+                      <span className="text-stone-500 dark:text-stone-400 font-medium">Bank of Abyssinia:</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-stone-900 dark:text-white text-sm">
+                        <span className="font-mono font-black text-stone-900 dark:text-white text-base">
                           {paymentSettings.boaAccount || '61648817'}
                         </span>
                         <button
                           type="button"
                           onClick={() => handleCopy(paymentSettings.boaAccount || '61648817', 'boa')}
-                          className="px-2.5 py-1 bg-white dark:bg-stone-700 border border-stone-200 dark:border-stone-600 rounded text-[10px] font-bold text-emerald-800 dark:text-emerald-300 hover:bg-emerald-50 cursor-pointer"
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
                         >
                           {copiedField === 'boa' ? t.copiedText : t.copyBtn}
                         </button>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-stone-500 dark:text-stone-400">{t.accountName}</span>
-                      <span className="font-bold text-stone-800 dark:text-stone-200">{paymentSettings.boaName || 'E-Gojo Official'}</span>
+                    <div className="flex items-center justify-between text-stone-500 dark:text-stone-400">
+                      <span>{t.accountName}:</span>
+                      <span className="font-bold text-stone-800 dark:text-stone-200">{paymentSettings.boaName || 'BetDelala (Abyssinia)'}</span>
                     </div>
                   </>
                 )}
               </div>
             </div>
 
-            {/* STEP 2: BUYER DETAILS & SCREENSHOT UPLOAD */}
-            <div className="space-y-3 pt-2">
+            {/* STEP 2: USER REGISTRY (PHONE & PASSWORD) & SCREENSHOT */}
+            <div className="space-y-3 pt-1">
               <div className="flex items-center gap-2 text-xs font-black text-emerald-800 dark:text-emerald-400 uppercase tracking-wider">
                 <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[11px] flex items-center justify-center">2</span>
-                <span>{t.step2Title}</span>
+                <span>{currentLang === 'am' ? 'ደረጃ 2፡ ስልክዎ፣ ፓስወርድ እና ስክሪንሽት' : 'Step 2: Phone, Password & Screenshot'}</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
-                    {t.buyerPhoneLabel}
+                    {t.buyerPhoneLabel} *
                   </label>
                   <input
                     type="tel"
@@ -522,42 +405,60 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
                     className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white"
                   />
                   <p className="text-[10px] text-stone-500 dark:text-stone-400 mt-0.5">
-                    {currentLang === 'am' ? 'ይህ ስልክ ባለቤቱ እንዲከፈትለት ይፈቀዳል' : 'Owner contact will unlock for this phone'}
+                    {currentLang === 'am' ? 'ይህ ቤት የሚከፈተው ለዚህ ስልክ ብቻ ነው' : 'Owner contact unlocks for this phone'}
                   </p>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
+                    {currentLang === 'am' ? 'የይለፍ ቃል / Password (PIN) *' : 'Account Password / PIN *'}
+                  </label>
+                  <input
+                    type="password"
+                    required
+                    value={buyerPin}
+                    onChange={(e) => setBuyerPin(e.target.value)}
+                    placeholder="4+ digits password"
+                    className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-mono text-stone-900 dark:text-white"
+                  />
+                  <p className="text-[10px] text-stone-500 dark:text-stone-400 mt-0.5">
+                    {currentLang === 'am' ? 'በኋላ ተመልሰው ለመግባት ይጠቅምዎታል' : 'Used to log in and view your unlocked houses'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
                     {t.buyerNameLabel}
                   </label>
                   <input
                     type="text"
-                    required
                     value={buyerName}
                     onChange={(e) => setBuyerName(e.target.value)}
                     placeholder="e.g. Abebe / ሰላም"
                     className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-semibold text-stone-900 dark:text-white"
                   />
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
-                  {t.txnRefLabel}
-                </label>
-                <input
-                  type="text"
-                  value={transactionRef}
-                  onChange={(e) => setTransactionRef(e.target.value)}
-                  placeholder="e.g. FT24089... or Telebirr Txn ID"
-                  className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm font-mono text-stone-900 dark:text-white"
-                />
+                <div>
+                  <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
+                    {t.txnRefLabel}
+                  </label>
+                  <input
+                    type="text"
+                    value={transactionRef}
+                    onChange={(e) => setTransactionRef(e.target.value)}
+                    placeholder="e.g. FT24089... / Telebirr Txn"
+                    className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-xs sm:text-sm font-mono text-stone-900 dark:text-white"
+                  />
+                </div>
               </div>
 
               {/* Screenshot Uploader */}
               <div>
                 <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
-                  {t.uploadReceipt}
+                  {t.uploadReceipt} ({unlockFee} {t.etb}) *
                 </label>
 
                 <div
@@ -592,10 +493,10 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
                     <div className="flex flex-col items-center">
                       <Upload className="w-7 h-7 text-emerald-600 dark:text-emerald-400 mb-1" />
                       <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
-                        {currentLang === 'am' ? `የ ${effectiveFee} ብር ክፍያ ስክሪንሽት እዚህ ይጫኑ` : `Upload ${effectiveFee} ETB Receipt Screenshot`}
+                        {currentLang === 'am' ? `የ ${unlockFee} ብር ክፍያ ስክሪንሽት እዚህ ይጫኑ` : `Upload ${unlockFee} ETB Receipt Screenshot`}
                       </span>
                       <span className="text-[11px] text-stone-400 mt-0.5">
-                        {currentLang === 'am' ? 'በራስ-ሰር ይቀነሳል (Low KB)' : 'Auto-compressed on device'}
+                        {currentLang === 'am' ? 'በስልክዎ ወዲያው ይቀነሳል (Low KB)' : 'Auto-compressed to low KB'}
                       </span>
                     </div>
                   )}
@@ -603,56 +504,56 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
               </div>
             </div>
 
-              {/* BANNED PHONE WARNING */}
-              {isBanned && (
-                <div className="p-4 bg-rose-500/15 border-2 border-rose-600 rounded-2xl text-rose-900 dark:text-rose-200 text-xs space-y-1.5 animate-in shake">
-                  <div className="flex items-center gap-2 font-black text-rose-700 dark:text-rose-400 text-sm">
-                    <Ban className="w-5 h-5 shrink-0" />
-                    <span>{t.bannedAccountAlert}</span>
-                  </div>
-                  <p className="leading-relaxed font-medium">
-                    {t.bannedAccountDesc}
-                  </p>
+            {/* BANNED PHONE WARNING */}
+            {isBanned && (
+              <div className="p-4 bg-rose-500/15 border-2 border-rose-600 rounded-2xl text-rose-900 dark:text-rose-200 text-xs space-y-1.5 animate-in shake">
+                <div className="flex items-center gap-2 font-black text-rose-700 dark:text-rose-400 text-sm">
+                  <Ban className="w-5 h-5 shrink-0" />
+                  <span>{t.bannedAccountAlert}</span>
                 </div>
-              )}
-
-              {/* ANTI-DELALA & POACHING LEGAL WARNING BOX */}
-              <div className="bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700/70 p-4 rounded-2xl space-y-2.5">
-                <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-300 font-extrabold text-xs">
-                  <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
-                  <span>{t.antiDelalaWarningTitle}</span>
-                </div>
-                <p className="text-[11px] sm:text-xs text-stone-700 dark:text-stone-300 leading-relaxed">
-                  {t.antiDelalaWarningText}
+                <p className="leading-relaxed font-medium">
+                  {t.bannedAccountDesc}
                 </p>
-
-                {/* Agreement Checkbox */}
-                <label className="flex items-start gap-2.5 pt-1.5 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    required
-                    checked={hasAgreedAntiDelala}
-                    onChange={(e) => setHasAgreedAntiDelala(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer shrink-0"
-                  />
-                  <span className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-stone-100 leading-tight">
-                    {t.antiDelalaAgreementCheckbox}
-                  </span>
-                </label>
               </div>
+            )}
 
-              {/* Submit CTA */}
-              <div className="pt-2">
-                <button
-                  id="submit-receipt-btn"
-                  type="submit"
-                  disabled={isCompressing || isBanned || !hasAgreedAntiDelala}
-                  className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-2xl text-sm sm:text-base font-black shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Check className="w-5 h-5" />
-                  <span>{t.submitReceiptBtn} ({effectiveFee} {t.etb})</span>
-                </button>
+            {/* ANTI-DELALA & POACHING LEGAL WARNING BOX */}
+            <div className="bg-emerald-500/10 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700/70 p-4 rounded-2xl space-y-2">
+              <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-300 font-extrabold text-xs">
+                <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                <span>{t.antiDelalaWarningTitle}</span>
               </div>
+              <p className="text-[11px] sm:text-xs text-stone-700 dark:text-stone-300 leading-relaxed">
+                {t.antiDelalaWarningText}
+              </p>
+
+              {/* Agreement Checkbox */}
+              <label className="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  required
+                  checked={hasAgreedAntiDelala}
+                  onChange={(e) => setHasAgreedAntiDelala(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-stone-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer shrink-0"
+                />
+                <span className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-stone-100 leading-tight">
+                  {t.antiDelalaAgreementCheckbox}
+                </span>
+              </label>
+            </div>
+
+            {/* Submit CTA */}
+            <div className="pt-1">
+              <button
+                id="submit-receipt-btn"
+                type="submit"
+                disabled={isCompressing || isBanned || !hasAgreedAntiDelala}
+                className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-2xl text-sm sm:text-base font-black shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Check className="w-5 h-5" />
+                <span>{t.submitReceiptBtn} ({unlockFee} {t.etb})</span>
+              </button>
+            </div>
           </form>
         )}
       </div>

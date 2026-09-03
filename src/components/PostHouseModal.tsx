@@ -36,7 +36,7 @@ import {
 } from '../data/addisAreas';
 import { translations } from '../data/translations';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
-import { getStoredSettings } from '../utils/storage';
+import { getStoredSettings, getStoredOwnerProfile, saveOwnerProfile, OwnerProfile } from '../utils/storage';
 import { calculateOwnerListingFee, formatEtbPrice } from '../utils/pricing';
 
 interface PostHouseModalProps {
@@ -104,6 +104,28 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
   const [ownerPin, setOwnerPin] = useState('');
   const [nationalIdImage, setNationalIdImage] = useState<string | null>(null);
   const [nationalIdSizeKb, setNationalIdSizeKb] = useState<number>(0);
+  const [recognizedOwner, setRecognizedOwner] = useState<OwnerProfile | null>(null);
+
+  const handleOwnerPhoneChange = (enteredPhone: string) => {
+    setOwnerPhone(enteredPhone);
+    const clean = enteredPhone.trim().replace(/[\s-]/g, '');
+    if (clean.length >= 9) {
+      const existing = getStoredOwnerProfile(clean);
+      if (existing) {
+        setRecognizedOwner(existing);
+        if (!ownerName && existing.name) setOwnerName(existing.name);
+        if (!ownerPin && existing.pin) setOwnerPin(existing.pin);
+        if (!nationalIdImage && existing.nationalIdFrontUrl) {
+          setNationalIdImage(existing.nationalIdFrontUrl);
+          setNationalIdSizeKb(120);
+        }
+      } else {
+        setRecognizedOwner(null);
+      }
+    } else {
+      setRecognizedOwner(null);
+    }
+  };
 
   // Seller listing fee payment
   const [sellerPaymentMethod, setSellerPaymentMethod] = useState<PaymentMethod>('telebirr');
@@ -229,7 +251,7 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       return;
     }
 
-    if (!nationalIdImage) {
+    if (!nationalIdImage && (!recognizedOwner || !recognizedOwner.nationalIdFrontUrl)) {
       setErrorMsg(
         currentLang === 'am'
           ? 'እባክዎ የባለቤትነት ማረጋገጫ የመታወቂያ ፊት ፎቶ (National ID Front Photo) ያስገቡ።'
@@ -369,6 +391,12 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       capacity: category === 'machinery' ? machineryCapacity : undefined,
       operatingHours: category === 'machinery' && machineryHours ? Number(machineryHours) : undefined,
     };
+
+    saveOwnerProfile(ownerPhone, {
+      name: ownerName.trim(),
+      pin: ownerPin.trim(),
+      nationalIdFrontUrl: nationalIdImage || recognizedOwner?.nationalIdFrontUrl,
+    });
 
     onAddProperty(newProperty);
     onClose();
@@ -1096,15 +1124,60 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
 
           {/* 8. OWNER CONTACT & NATIONAL ID VERIFICATION & SECRET PIN */}
           <div className="p-4 sm:p-5 bg-stone-100/80 dark:bg-stone-850 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-4">
-            <div className="flex items-center gap-2 text-xs font-bold text-emerald-900 dark:text-emerald-300">
-              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>{t.protectedOwnerInfoTitle}</span>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-emerald-900 dark:text-emerald-300">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>{t.protectedOwnerInfoTitle}</span>
+              </div>
+              {recognizedOwner && (
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-600 text-white text-[11px] font-black">
+                  ✓ {currentLang === 'am' ? 'የታወቀ ባለቤት' : 'Verified Returning Owner'}
+                </span>
+              )}
             </div>
+
+            {/* Returning Owner Recognition Notice */}
+            {recognizedOwner && (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border-2 border-emerald-500/40 rounded-xl text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-start gap-2.5">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <p>
+                    {currentLang === 'am'
+                      ? `እንኳን ደህና መጡ ${recognizedOwner.name}! ስልክዎ እና የመታወቂያ መረጃዎ አስቀድሞ በሲስተሙ ተመዝግቧል።`
+                      : `Welcome back, ${recognizedOwner.name}! Your National ID is already verified on file.`}
+                  </p>
+                  <p className="text-[11px] font-normal text-emerald-700 dark:text-emerald-300">
+                    {currentLang === 'am'
+                      ? 'መታወቂያ እንደገና መጫን አያስፈልግዎትም — የፈለጉትን ያህል ተጨማሪ ቤቶች መለጠፍ ይችላሉ።'
+                      : 'You do not need to re-upload your National ID. Add as many properties as you like!'}
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
-                  {t.ownerNameLabel}
+                  {t.ownerPhoneLabel} <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  required
+                  value={ownerPhone}
+                  onChange={(e) => handleOwnerPhoneChange(e.target.value)}
+                  placeholder="0911223344"
+                  className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-800 border-2 border-emerald-500/40 dark:border-emerald-600/50 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+                />
+                <span className="text-[10px] text-stone-500 dark:text-stone-400 mt-1 block">
+                  {currentLang === 'am'
+                    ? 'አንዴ ያስገቡ፤ ሌሎች ቤቶች ሲለጥፉ በራሱ ያውቅዎታል'
+                    : 'Enter once — the system remembers your verified ID on return'}
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
+                  {t.ownerNameLabel} <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -1113,20 +1186,6 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
                   onChange={(e) => setOwnerName(e.target.value)}
                   placeholder="Ato Abebe / ወ/ሮ አልማዝ"
                   className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-600 rounded-xl text-sm font-semibold text-stone-900 dark:text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
-                  {t.ownerPhoneLabel}
-                </label>
-                <input
-                  type="tel"
-                  required
-                  value={ownerPhone}
-                  onChange={(e) => setOwnerPhone(e.target.value)}
-                  placeholder="0911223344"
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-600 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white"
                 />
               </div>
             </div>
@@ -1145,13 +1204,18 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
               />
             </div>
 
-            {/* MANDATORY NATIONAL ID FRONT PHOTO UPLOAD */}
+            {/* MANDATORY NATIONAL ID FRONT PHOTO UPLOAD (Optional if returning recognized owner) */}
             <div className="p-3.5 bg-white dark:bg-stone-900 rounded-xl border-2 border-emerald-500/30 dark:border-emerald-700/40 space-y-2">
               <div className="flex items-start justify-between">
                 <div>
                   <label className="block text-xs font-black text-stone-900 dark:text-white flex items-center gap-1.5">
                     <FileCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>{t.nationalIdLabel || 'National ID Front Photo *'}</span>
+                    <span>{t.nationalIdLabel || 'National ID Front Photo'}</span>
+                    {recognizedOwner?.nationalIdFrontUrl ? (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">(Verified on file)</span>
+                    ) : (
+                      <span className="text-rose-500">*</span>
+                    )}
                   </label>
                   <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
                     {t.nationalIdDesc || 'Upload a clear photo of the front of your National ID (Kebele / Fayda / Passport) for owner verification.'}
@@ -1181,7 +1245,9 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
                   />
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 truncate">
-                      {t.nationalIdAttached || '✓ National ID Front Photo Attached'}
+                      {recognizedOwner?.nationalIdFrontUrl === nationalIdImage
+                        ? (currentLang === 'am' ? '✓ ቀደም ሲል የተረጋገጠ የመታወቂያ ፎቶ' : '✓ Verified National ID on file')
+                        : (t.nationalIdAttached || '✓ National ID Front Photo Attached')}
                     </p>
                     <p className="text-[10px] text-stone-400">
                       {currentLang === 'am' ? 'ባለቤትነት ተረጋግጧል' : 'Ready for admin verification'}

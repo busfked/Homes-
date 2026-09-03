@@ -1,6 +1,24 @@
 import React, { useState } from 'react';
-import { X, Lock, Phone, User, LogIn, LogOut, CheckCircle2, Shield, Sparkles, Layers, Building2, KeyRound, AlertCircle } from 'lucide-react';
-import { UserAccount, Language, Property } from '../types';
+import { 
+  X, 
+  Lock, 
+  Phone, 
+  User, 
+  LogIn, 
+  LogOut, 
+  CheckCircle2, 
+  Clock, 
+  Sparkles, 
+  Layers, 
+  Building2, 
+  KeyRound, 
+  AlertCircle,
+  Eye,
+  EyeOff,
+  CreditCard,
+  Check
+} from 'lucide-react';
+import { UserAccount, Language, Property, UnlockRequest } from '../types';
 import { translations } from '../data/translations';
 import { loginUserAccount, registerUserAccount, isPhoneBanned } from '../utils/storage';
 
@@ -10,9 +28,11 @@ interface UserAuthModalProps {
   currentLang: Language;
   currentUser: UserAccount | null;
   allProperties: Property[];
+  unlockRequests?: UnlockRequest[];
   onLoginSuccess: (user: UserAccount) => void;
   onLogout: () => void;
   onSelectProperty: (property: Property) => void;
+  onOpenBuyPackageModal?: () => void;
 }
 
 export const UserAuthModal: React.FC<UserAuthModalProps> = ({
@@ -21,17 +41,20 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   currentLang,
   currentUser,
   allProperties,
+  unlockRequests = [],
   onLoginSuccess,
   onLogout,
   onSelectProperty,
+  onOpenBuyPackageModal,
 }) => {
   if (!isOpen) return null;
 
   const t = translations[currentLang];
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -40,19 +63,28 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
     setErrorMsg('');
     setSuccessMsg('');
 
-    const cleanPhone = phone.trim();
+    const cleanPhone = phone.trim().replace(/[\s-]/g, '');
     if (!cleanPhone || cleanPhone.length < 9) {
-      setErrorMsg(currentLang === 'am' ? 'እባክዎ ትክክለኛ ስልክ ቁጥር ያስገቡ።' : 'Please enter a valid phone number.');
+      setErrorMsg(
+        currentLang === 'am'
+          ? 'እባክዎ ትክክለኛ ስልክ ቁጥር ያስገቡ (ለምሳሌ 0911223344)።'
+          : 'Please enter a valid phone number (e.g. 0911223344).'
+      );
       return;
     }
 
     if (isPhoneBanned(cleanPhone)) {
-      setErrorMsg(t.bannedAccountAlert);
+      setErrorMsg(t.bannedAccountAlert || 'This phone number has been flagged for violations.');
       return;
     }
 
-    if (!pin.trim() || pin.trim().length < 4) {
-      setErrorMsg(currentLang === 'am' ? 'የሚስጥር ቁጥር (PIN) ቢያንስ 4 ዲጂት መሆን አለበት።' : 'PIN must be at least 4 digits.');
+    const cleanPin = pin.trim();
+    if (!cleanPin || cleanPin.length < 4) {
+      setErrorMsg(
+        currentLang === 'am'
+          ? 'የሚስጥር ቁጥር (PIN/Password) ቢያንስ 4 ዲጂት መሆን አለበት።'
+          : 'PIN/Password must be at least 4 digits.'
+      );
       return;
     }
 
@@ -61,30 +93,49 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
         setErrorMsg(currentLang === 'am' ? 'እባክዎ ሙሉ ስምዎን ያስገቡ።' : 'Please enter your full name.');
         return;
       }
-      const newUser = registerUserAccount(cleanPhone, pin.trim(), name.trim());
-      onLoginSuccess(newUser);
-      setSuccessMsg(currentLang === 'am' ? 'አካውንትዎ በተሳካ ሁኔታ ተፈጥሯል!' : 'Account created successfully!');
-      setTimeout(() => onClose(), 900);
+      const res = registerUserAccount(name.trim(), cleanPhone, cleanPin);
+      if (!res.success || !res.user) {
+        setErrorMsg(res.message);
+        return;
+      }
+      onLoginSuccess(res.user);
+      setSuccessMsg(
+        currentLang === 'am'
+          ? 'መለያዎ በተሳካ ሁኔታ ተመዝግቧል! አሁን ቤቶችን መመልከት ይችላሉ።'
+          : 'Account registered and active! You can now browse and unlock listings.'
+      );
     } else {
-      const user = loginUserAccount(cleanPhone, pin.trim());
-      if (!user) {
+      const res = loginUserAccount(cleanPhone, cleanPin);
+      if (!res.success || !res.user) {
         setErrorMsg(
-          currentLang === 'am'
-            ? 'ስልክ ቁጥር ወይም የሚስጥር ቁጥር አልተገኘም። እባክዎ እንደገና ይሞክሩ ወይም ይመዝገቡ።'
-            : 'Invalid phone or PIN. Please try again or register.'
+          res.message ||
+            (currentLang === 'am'
+              ? 'ስልክ ቁጥር ወይም የሚስጥር ቁጥር አልተገኘም። እባክዎ ይመዝገቡ።'
+              : 'Invalid phone or PIN. Please register.')
         );
         return;
       }
-      onLoginSuccess(user);
+      onLoginSuccess(res.user);
       setSuccessMsg(currentLang === 'am' ? 'በተሳካ ሁኔታ ገብተዋል!' : 'Logged in successfully!');
-      setTimeout(() => onClose(), 900);
     }
   };
 
   // Find user's unlocked properties
+  const cleanUserPhone = currentUser?.phone?.replace(/[\s-]/g, '') || '';
   const unlockedProperties = currentUser?.unlockedPropertyIds
     ? allProperties.filter((p) => currentUser.unlockedPropertyIds.includes(p.id))
     : [];
+
+  // Find user's deposit & unlock payment approvals
+  const userRequests = unlockRequests.filter(
+    (req) => req.buyerPhone && req.buyerPhone.replace(/[\s-]/g, '') === cleanUserPhone
+  );
+
+  // Total remaining unlocks
+  const totalRemainingUnlocks = (currentUser?.packages || []).reduce(
+    (sum, p) => sum + (p.remainingUnlocks || 0),
+    0
+  );
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150">
@@ -102,13 +153,17 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
             <div>
               <h2 className="text-lg font-black text-stone-900 dark:text-stone-100">
                 {currentUser
-                  ? (currentLang === 'am' ? 'የእኔ አካውንት እና ጥቅሎች' : 'My Account & Packages')
-                  : (authMode === 'login' ? (currentLang === 'am' ? 'የተጠቃሚ መግቢያ' : 'User Login') : (currentLang === 'am' ? 'አዲስ አካውንት መክፈቻ' : 'Create Account'))}
+                  ? (currentLang === 'am' ? 'የቤት ፈላጊ መለያ እና ጥቅሎች' : 'Home Finder Account & Unlocks')
+                  : (authMode === 'login'
+                      ? (currentLang === 'am' ? 'የተጠቃሚ መግቢያ' : 'User Login')
+                      : (currentLang === 'am' ? 'አዲስ የቤት ፈላጊ ምዝገባ' : 'Register for Home Finders'))}
               </h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
-                {currentLang === 'am'
-                  ? 'የተከፈቱ ቤቶች እና ጥቅሎች ለስልክዎ ብቻ ሚስጥራዊ ሆነው ይቀመጣሉ'
-                  : 'Your unlocked houses & packages are strictly private to your login'}
+                {currentUser
+                  ? (currentLang === 'am' ? 'ክፍያዎችዎ፣ የቀሩ ቤቶች እና የተከፈቱ መረጃዎች' : 'Your approvals, remaining unlocks & watched houses')
+                  : (currentLang === 'am'
+                      ? 'አንዴ ይመዝገቡ፤ መለያዎ ወዲያውኑ ንቁ ይሆናል። ክፍያ የሚጠየቀው ቤት ለመክፈት ሲፈልጉ ብቻ ነው።'
+                      : 'Register once. Account is immediately active. Payment asked only when unlocking.')}
               </p>
             </div>
           </div>
@@ -137,78 +192,119 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
           )}
 
           {currentUser ? (
-            /* LOGGED IN PROFILE VIEW */
+            /* LOGGED IN USER PROFILE DASHBOARD */
             <div className="space-y-5">
+              {/* User Card */}
               <div className="bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 rounded-2xl p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-full bg-emerald-600 text-white font-black text-lg flex items-center justify-center shadow-xs">
                     {currentUser.name ? currentUser.name[0].toUpperCase() : 'U'}
                   </div>
                   <div>
-                    <h3 className="font-extrabold text-stone-900 dark:text-stone-100 text-base">
-                      {currentUser.name}
-                    </h3>
-                    <p className="font-mono text-xs text-stone-500 dark:text-stone-400 font-semibold">
-                      {currentUser.phone}
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-stone-900 dark:text-stone-100 text-base">
+                        {currentUser.name}
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold">
+                        Active
+                      </span>
+                    </div>
+                    <p className="font-mono text-xs text-stone-500 dark:text-stone-400 font-semibold flex items-center gap-1.5 mt-0.5">
+                      <span>📞 {currentUser.phone}</span>
+                      <span>•</span>
+                      <span>PIN: {currentUser.pin}</span>
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={onLogout}
-                  className="py-2 px-3.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-200 dark:border-rose-800/60"
+                  className="py-2 px-3 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-200 dark:border-rose-800/60"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   <span>{currentLang === 'am' ? 'ውጣ' : 'Logout'}</span>
                 </button>
               </div>
 
-              {/* Active Packages Summary */}
+              {/* UNLOCKED HOUSES SUMMARY STAT */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent border-2 border-emerald-500/30 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-black text-emerald-900 dark:text-emerald-200 uppercase tracking-wider flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span>{currentLang === 'am' ? 'የተከፈቱልዎ ቤቶች' : 'Your Unlocked Listings'}</span>
+                  </div>
+                  <p className="text-xs text-stone-600 dark:text-stone-400 mt-1">
+                    {unlockedProperties.length > 0
+                      ? (currentLang === 'am'
+                          ? `ለእርስዎ የተከፈቱ ${unlockedProperties.length} ቤቶች አሉ። የባለቤት ስልካቸውን በማንኛውም ጊዜ ማየት ይችላሉ።`
+                          : `You have ${unlockedProperties.length} unlocked listings. You can view owner contacts anytime.`)
+                      : (currentLang === 'am'
+                          ? 'እስካሁን የተከፈተ ቤት የለም። የሚፈልጉትን ቤት መርጠው የመክፈቻ ክፍያውን መፈጸም ይችላሉ።'
+                          : 'No listings unlocked yet. Choose a house and submit receipt to unlock.')}
+                  </p>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <div className="px-3.5 py-2 rounded-2xl bg-emerald-600 text-white font-black text-xl shadow-md">
+                    {unlockedProperties.length}
+                  </div>
+                </div>
+              </div>
+
+              {/* USER PAYMENT APPROVALS LIST */}
               <div className="space-y-2.5">
                 <h4 className="text-xs font-black text-stone-800 dark:text-stone-200 uppercase tracking-wider flex items-center gap-1.5">
-                  <Layers className="w-4 h-4 text-emerald-600" />
-                  <span>{currentLang === 'am' ? 'የእርስዎ ንቁ ጥቅሎች (Unlocks)' : 'Your Active Packages'}</span>
+                  <CreditCard className="w-4 h-4 text-emerald-600" />
+                  <span>{currentLang === 'am' ? 'የክፍያ ማረጋገጫዎች ሁኔታ' : 'Your Payment Approvals'} ({userRequests.length})</span>
                 </h4>
 
-                {currentUser.packages && currentUser.packages.length > 0 ? (
-                  <div className="space-y-2">
-                    {currentUser.packages.map((pkg) => (
+                {userRequests.length > 0 ? (
+                  <div className="space-y-2 max-h-48 overflow-y-auto">
+                    {userRequests.map((req) => (
                       <div
-                        key={pkg.id}
-                        className="p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/50 dark:bg-emerald-950/30 flex items-center justify-between"
+                        key={req.id}
+                        className="p-3 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 flex items-center justify-between"
                       >
                         <div>
-                          <div className="font-extrabold text-stone-900 dark:text-white text-xs">
-                            {currentLang === 'am'
-                              ? `እስከ ${pkg.maxHousePrice.toLocaleString()} ብር ቤቶች`
-                              : `Houses up to ${pkg.maxHousePrice.toLocaleString()} ETB`}
-                          </div>
-                          <span className="text-[11px] text-stone-500 dark:text-stone-400">
-                            {currentLang === 'am' ? `ከ 5 ቤቶች ውስጥ` : `Out of 5 unlocks`}
-                          </span>
+                          <p className="font-bold text-stone-900 dark:text-white text-xs">
+                            {req.type === 'package_purchase'
+                              ? (currentLang === 'am' ? '🎁 የ 5 ቤቶች ጥቅል ክፍያ' : '🎁 5-House Package')
+                              : (currentLang === 'am' ? '🔑 የቤት መክፈቻ ክፍያ' : '🔑 Single Unlock')}
+                          </p>
+                          <p className="text-[11px] text-stone-500 dark:text-stone-400">
+                            {req.amountBirr} ETB • {req.paymentMethod.toUpperCase()} • {req.transactionRef || 'Receipt'}
+                          </p>
                         </div>
-                        <div className="text-right">
-                          <span className="text-base font-black text-emerald-700 dark:text-emerald-400">
-                            {pkg.remainingUnlocks} {currentLang === 'am' ? 'ይቀራል' : 'left'}
-                          </span>
-                        </div>
+                        <span
+                          className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+                            req.status === 'approved'
+                              ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                              : req.status === 'pending'
+                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                              : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
+                          }`}
+                        >
+                          {req.status === 'approved'
+                            ? (currentLang === 'am' ? '✓ ተረጋግጧል' : '✓ Approved')
+                            : req.status === 'pending'
+                            ? (currentLang === 'am' ? '⏳ በግምገማ ላይ' : '⏳ Pending Review')
+                            : (currentLang === 'am' ? 'ውድቅ' : 'Rejected')}
+                        </span>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="p-4 rounded-2xl bg-stone-50 dark:bg-stone-850 border border-stone-200 dark:border-stone-700 text-center text-xs text-stone-500">
-                    {currentLang === 'am'
-                      ? 'እስካሁን ምንም የተገዛ ጥቅል የለዎትም። ቤት ሲከፍቱ የ 5 ቤቶች ጥቅል መግዛት ይችላሉ።'
-                      : 'No active packages yet. Purchase a 5-house package when unlocking any house.'}
-                  </div>
+                  <p className="text-xs text-stone-500 dark:text-stone-400 text-center py-2 bg-stone-50 dark:bg-stone-850 rounded-xl border border-stone-200 dark:border-stone-700">
+                    {currentLang === 'am' ? 'እስካሁን ምንም የተላከ የክፍያ ስክሪንሽት የለም' : 'No payment requests submitted yet'}
+                  </p>
                 )}
               </div>
 
-              {/* Unlocked Houses List */}
+              {/* UNLOCKED HOUSES TO WATCH LIST */}
               <div className="space-y-2.5">
                 <h4 className="text-xs font-black text-stone-800 dark:text-stone-200 uppercase tracking-wider flex items-center gap-1.5">
                   <Building2 className="w-4 h-4 text-emerald-600" />
                   <span>
-                    {currentLang === 'am' ? 'የተከፈቱልዎ ቤቶች' : 'Your Unlocked Properties'} ({unlockedProperties.length})
+                    {currentLang === 'am' ? 'የተከፈቱልዎ ቤቶች (Watch List)' : 'Your Unlocked Houses to Watch'} ({unlockedProperties.length})
                   </span>
                 </h4>
 
@@ -228,7 +324,7 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                             {prop.title}
                           </p>
                           <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                            {prop.area} • {prop.price.toLocaleString()} ETB
+                            {prop.area} • {prop.price.toLocaleString()} ETB • Owner: {prop.ownerName}
                           </p>
                         </div>
                         <span className="shrink-0 text-xs font-bold text-emerald-600 dark:text-emerald-400">
@@ -238,66 +334,69 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-stone-500 dark:text-stone-400 text-center py-2">
+                  <p className="text-xs text-stone-500 dark:text-stone-400 text-center py-2 bg-stone-50 dark:bg-stone-850 rounded-xl border border-stone-200 dark:border-stone-700">
                     {currentLang === 'am' ? 'እስካሁን የተከፈተ ቤት የለም' : 'No properties unlocked yet'}
                   </p>
                 )}
               </div>
             </div>
           ) : (
-            /* AUTH FORM: LOGIN OR REGISTER */
+            /* REGISTRATION / LOGIN FORM */
             <form onSubmit={handleAuthSubmit} className="space-y-4">
               {/* Tab Selector */}
               <div className="bg-stone-100 dark:bg-stone-800 p-1 rounded-2xl grid grid-cols-2 gap-1 text-xs font-bold">
                 <button
                   type="button"
                   onClick={() => {
-                    setAuthMode('login');
-                    setErrorMsg('');
-                  }}
-                  className={`py-2 px-3 rounded-xl transition-all cursor-pointer ${
-                    authMode === 'login'
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
-                  }`}
-                >
-                  {currentLang === 'am' ? 'ግባ (Login)' : 'Login'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
                     setAuthMode('register');
                     setErrorMsg('');
                   }}
-                  className={`py-2 px-3 rounded-xl transition-all cursor-pointer ${
+                  className={`py-2.5 px-3 rounded-xl transition-all cursor-pointer ${
                     authMode === 'register'
                       ? 'bg-emerald-600 text-white shadow-xs'
                       : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
                   }`}
                 >
-                  {currentLang === 'am' ? 'ተመዝገብ (Sign Up)' : 'Sign Up'}
+                  {currentLang === 'am' ? 'አዲስ ተመዝገብ (Register)' : 'Register Once'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode('login');
+                    setErrorMsg('');
+                  }}
+                  className={`py-2.5 px-3 rounded-xl transition-all cursor-pointer ${
+                    authMode === 'login'
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                  }`}
+                >
+                  {currentLang === 'am' ? 'መለያ አለኝ (Login)' : 'Already Registered'}
                 </button>
               </div>
 
               {authMode === 'register' && (
                 <div>
                   <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
-                    {currentLang === 'am' ? 'ሙሉ ስም' : 'Full Name'}
+                    {currentLang === 'am' ? 'ሙሉ ስም' : 'Full Name'} <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Abebe Kebede"
-                    className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm text-stone-900 dark:text-white font-medium"
-                  />
+                  <div className="relative">
+                    <User className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Abebe Kebede"
+                      className="w-full pl-10 pr-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm text-stone-900 dark:text-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                  </div>
                 </div>
               )}
 
               <div>
                 <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
-                  {currentLang === 'am' ? 'ስልክ ቁጥር' : 'Phone Number'}
+                  {currentLang === 'am' ? 'ስልክ ቁጥር' : 'Phone Number'} <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <Phone className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
@@ -307,31 +406,38 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="0911223344"
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white"
+                    className="w-full pl-10 pr-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
-                  {currentLang === 'am' ? 'የሚስጥር ቁጥር (4-Digit PIN)' : 'Security PIN (4+ digits)'}
+                  {currentLang === 'am' ? 'የሚስጥር ቁጥር (4+ ዲጂት PIN)' : 'Registry Password / PIN (4+ digits)'} <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
                   <KeyRound className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
                   <input
-                    type="password"
+                    type={showPin ? 'text' : 'password'}
                     required
                     maxLength={10}
                     value={pin}
                     onChange={(e) => setPin(e.target.value)}
                     placeholder="••••"
-                    className="w-full pl-10 pr-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-mono font-black text-stone-900 dark:text-white"
+                    className="w-full pl-10 pr-10 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-mono font-black text-stone-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPin(!showPin)}
+                    className="absolute right-3 top-3 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
+                  >
+                    {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
-                <p className="text-[11px] text-stone-400 mt-1">
+                <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-1">
                   {currentLang === 'am'
-                    ? 'የከፈቷቸው ቤቶች ለሌላ ሰው እንዳይታዩ የሚያረጋግጥ'
-                    : 'Protects your purchased unlocks and keeps them strictly private'}
+                    ? 'የከፈቷቸው ቤቶች እና ጥቅሎች ለስልክዎ ብቻ ሚስጥራዊ ሆነው እንዲቀመጡ ያረጋግጣል።'
+                    : 'Protects your purchased unlocks and keeps them strictly private to your phone'}
                 </p>
               </div>
 
@@ -342,9 +448,9 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                 >
                   <LogIn className="w-4 h-4" />
                   <span>
-                    {authMode === 'login'
-                      ? (currentLang === 'am' ? 'ግባ' : 'Log In')
-                      : (currentLang === 'am' ? 'ተመዝገብ እና ጀምር' : 'Create Account & Continue')}
+                    {authMode === 'register'
+                      ? (currentLang === 'am' ? 'ተመዝገብ እና ወዲያውኑ ጀምር' : 'Register & Start Browsing')
+                      : (currentLang === 'am' ? 'ግባ' : 'Log In')}
                   </span>
                 </button>
               </div>

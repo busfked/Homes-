@@ -22,12 +22,21 @@ import {
   ShieldAlert,
   Ban,
   UserX,
-  Phone
+  Phone,
+  Users,
+  UserCheck
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Property, UnlockRequest, PaymentSettings, Language, ReportedBroker } from '../types';
+import { Property, UnlockRequest, PaymentSettings, Language, ReportedBroker, UserAccount } from '../types';
 import { translations } from '../data/translations';
-import { SUPABASE_SQL_SCHEMA, cleanupExpiredListings, getDaysRemaining } from '../utils/storage';
+import { 
+  SUPABASE_SQL_SCHEMA, 
+  cleanupExpiredListings, 
+  getDaysRemaining, 
+  getStoredUsers, 
+  deleteUserAccount, 
+  cleanInactiveUsers 
+} from '../utils/storage';
 import { formatFileSize } from '../utils/imageCompressor';
 
 interface AdminPanelProps {
@@ -82,7 +91,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [loginError, setLoginError] = useState('');
 
   // Active Admin Sub-Tab
-  const [activeAdminTab, setActiveAdminTab] = useState<'pending' | 'inventory' | 'antifraud' | 'settings' | 'deploy'>('pending');
+  const [activeAdminTab, setActiveAdminTab] = useState<'pending' | 'inventory' | 'users' | 'antifraud' | 'settings' | 'deploy'>('pending');
+  const [depositFilter, setDepositFilter] = useState<'all' | 'owners' | 'users'>('all');
+  const [registeredUsers, setRegisteredUsers] = useState<UserAccount[]>([]);
+  const [userSearchTerm, setUserSearchTerm] = useState('');
+  const [spaceNotice, setSpaceNotice] = useState<string | null>(null);
 
   // Manual ban input
   const [manualBanPhone, setManualBanPhone] = useState('');
@@ -106,6 +119,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setSettingsForm({ ...paymentSettings });
   }, [paymentSettings]);
 
+  // Keep registered users synced
+  const refreshUserList = () => {
+    setRegisteredUsers(getStoredUsers());
+  };
+
+  React.useEffect(() => {
+    refreshUserList();
+  }, [isAdminLoggedIn, activeAdminTab]);
+
+  const handleDeleteUser = (userIdOrPhone: string, userName: string) => {
+    if (
+      window.confirm(
+        currentLang === 'am'
+          ? `እርግጠኛ ነዎት ተጠቃሚ "${userName}"ን ከዳታቤዝ በቋሚነት ማጥፋት ይፈልጋሉ? ይህ የ Supabase ማከማቻ ቦታን ይቆጥባል።`
+          : `Are you sure you want to permanently delete user "${userName}" to save Supabase database space?`
+      )
+    ) {
+      deleteUserAccount(userIdOrPhone);
+      refreshUserList();
+      setSpaceNotice(
+        currentLang === 'am'
+          ? `✓ ተጠቃሚ "${userName}" ተሰርዟል። የማከማቻ ቦታ ተቆጥቧል!`
+          : `✓ User "${userName}" deleted. Database storage space saved!`
+      );
+      setTimeout(() => setSpaceNotice(null), 4000);
+    }
+  };
+
+  const handleCleanInactiveUsers = () => {
+    const res = cleanInactiveUsers();
+    refreshUserList();
+    setSpaceNotice(
+      currentLang === 'am'
+        ? `✓ ${res.removedCount} ንቁ ያልሆኑ ተጠቃሚዎች ተሰርዘዋል። የማከማቻ ቦታ ተቆጥቧል!`
+        : `✓ Cleaned ${res.removedCount} inactive users from database. Supabase space saved!`
+    );
+    setTimeout(() => setSpaceNotice(null), 4000);
+  };
+
   // Supabase SQL copy state
   const [copiedSql, setCopiedSql] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
@@ -121,6 +173,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     return isExpired || p.status === 'expired';
   });
   const pendingReports = reportedBrokers.filter((r) => r.status === 'pending_review');
+
+  // Separated deposits
+  const ownerRequests = unlockRequests.filter((r) => r.type === 'owner_listing_fee');
+  const userRequests = unlockRequests.filter((r) => r.type !== 'owner_listing_fee');
+  const ownerPending = ownerRequests.filter((r) => r.status === 'pending');
+  const userPending = userRequests.filter((r) => r.status === 'pending');
+
+  const displayedRequests = unlockRequests.filter((r) => {
+    if (depositFilter === 'owners') return r.type === 'owner_listing_fee';
+    if (depositFilter === 'users') return r.type !== 'owner_listing_fee';
+    return true;
+  });
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -399,6 +463,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </button>
 
               <button
+                onClick={() => setActiveAdminTab('users')}
+                className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                  activeAdminTab === 'users'
+                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
+                    : 'border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
+                }`}
+              >
+                <Users className="w-4 h-4 text-emerald-600" />
+                <span>{currentLang === 'am' ? 'ተጠቃሚዎች እና ቦታ ቆጣቢ' : 'Users & Space Saver'} ({registeredUsers.length})</span>
+              </button>
+
+              <button
                 onClick={() => setActiveAdminTab('antifraud')}
                 className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                   activeAdminTab === 'antifraud'
@@ -445,22 +521,79 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* TAB 1: PENDING PAYMENT SCREENSHOTS (100 / 500 ETB) */}
               {activeAdminTab === 'pending' && (
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wider">
-                      {currentLang === 'am' ? 'የሚገመገሙ የክፍያ ስክሪንሽቶች' : 'Payment Screenshots to Review'}
-                    </h3>
-                    <span className="text-xs text-stone-500 dark:text-stone-400 font-medium">
-                      {pendingRequests.length} pending
-                    </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wider">
+                        {currentLang === 'am' ? 'የሚገመገሙ የክፍያ ስክሪንሽቶች' : 'Payment Screenshots to Review'}
+                      </h3>
+                      <p className="text-xs text-stone-500 dark:text-stone-400">
+                        {currentLang === 'am'
+                          ? 'የቤቱ ባለቤቶችና የተጠቃሚዎች ክፍያዎች ተለይተዋል'
+                          : 'Owners listing deposits & users unlock deposits are separated'}
+                      </p>
+                    </div>
+
+                    {/* Deposit Filter Buttons */}
+                    <div className="flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 p-1 rounded-xl text-xs font-bold shrink-0">
+                      <button
+                        onClick={() => setDepositFilter('all')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                          depositFilter === 'all'
+                            ? 'bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-xs'
+                            : 'text-stone-500 dark:text-stone-400 hover:text-stone-800'
+                        }`}
+                      >
+                        {currentLang === 'am' ? 'ሁሉም ክፍያዎች' : 'All Deposits'} ({unlockRequests.length})
+                      </button>
+
+                      <button
+                        onClick={() => setDepositFilter('owners')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                          depositFilter === 'owners'
+                            ? 'bg-amber-500 text-white shadow-xs'
+                            : 'text-stone-600 dark:text-stone-300 hover:text-stone-900'
+                        }`}
+                      >
+                        <span>🏠 {currentLang === 'am' ? 'የባለቤቶች ተቀማጭ' : 'Owner Deposits'}</span>
+                        <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">
+                          {ownerPending.length}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={() => setDepositFilter('users')}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                          depositFilter === 'users'
+                            ? 'bg-emerald-600 text-white shadow-xs'
+                            : 'text-stone-600 dark:text-stone-300 hover:text-stone-900'
+                        }`}
+                      >
+                        <span>👥 {currentLang === 'am' ? 'የተጠቃሚዎች ክፍያ' : 'User Deposits'}</span>
+                        <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">
+                          {userPending.length}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
-                  {unlockRequests.length === 0 ? (
-                    <div className="text-center py-10 text-stone-500 dark:text-stone-400 text-xs sm:text-sm">
-                      {currentLang === 'am' ? 'ምንም የክፍያ ጥያቄ አልተገኘም።' : 'No unlock requests yet.'}
+                  {spaceNotice && (
+                    <div className="p-3 bg-emerald-100 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{spaceNotice}</span>
+                    </div>
+                  )}
+
+                  {displayedRequests.length === 0 ? (
+                    <div className="text-center py-10 text-stone-500 dark:text-stone-400 text-xs sm:text-sm bg-stone-50 dark:bg-stone-850 rounded-2xl border border-stone-200 dark:border-stone-800">
+                      {depositFilter === 'owners'
+                        ? (currentLang === 'am' ? 'ምንም የባለቤት ምዝገባ ተቀማጭ የለም።' : 'No owner listing deposits found.')
+                        : depositFilter === 'users'
+                        ? (currentLang === 'am' ? 'ምንም የተጠቃሚ ፓኬጅ ወይም ቁልፍ ክፍያ የለም።' : 'No user unlock deposits found.')
+                        : (currentLang === 'am' ? 'ምንም የክፍያ ጥያቄ አልተገኘም።' : 'No unlock requests yet.')}
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {unlockRequests.map((req) => {
+                      {displayedRequests.map((req) => {
                         const targetProp = properties.find((p) => p.id === req.propertyId);
 
                         return (
@@ -572,13 +705,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="text-xs font-bold text-stone-500 dark:text-stone-400">
+                                  <div className="flex flex-col items-end gap-1 text-xs font-bold text-stone-500 dark:text-stone-400">
                                     {req.status === 'approved' ? (
                                       <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                                         <CheckCircle2 className="w-4 h-4" /> Approved
                                       </span>
                                     ) : (
                                       <span className="text-rose-600 dark:text-rose-400">Rejected</span>
+                                    )}
+
+                                    {/* Delete User to Free Space after approval */}
+                                    {req.type !== 'owner_listing_fee' && (
+                                      <button
+                                        onClick={() => handleDeleteUser(req.buyerPhone, req.buyerName)}
+                                        className="py-1 px-2 bg-stone-100 dark:bg-stone-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-stone-600 hover:text-rose-600 dark:text-stone-400 dark:hover:text-rose-300 border border-stone-200 dark:border-stone-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                        title="Delete this user from database to save space on Supabase"
+                                      >
+                                        <Trash2 className="w-3 h-3 text-rose-500" />
+                                        <span>{currentLang === 'am' ? 'ቦታ ቆጥብ (ተጠቃሚውን አጥፋ)' : 'Delete user (free space)'}</span>
+                                      </button>
                                     )}
                                   </div>
                                 )}
@@ -587,6 +732,139 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           </div>
                         );
                       })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: REGISTERED USERS & FREE TIER SPACE CLEANUP */}
+              {activeAdminTab === 'users' && (
+                <div className="space-y-4">
+                  {/* Space Optimization Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-emerald-50/60 dark:bg-emerald-950/40 p-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/60">
+                    <div>
+                      <h4 className="font-bold text-stone-900 dark:text-stone-100 text-sm flex items-center gap-2">
+                        <Users className="w-4 h-4 text-emerald-600" />
+                        <span>{currentLang === 'am' ? 'የተመዘገቡ ተጠቃሚዎች እና የቦታ ቆጣቢ' : 'Registered Users & Free Tier Space Saver'}</span>
+                      </h4>
+                      <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                        {currentLang === 'am'
+                          ? 'ተጠቃሚዎች አገልግሎት ከጨረሱ በኋላ ወይም ካልተንቀሳቀሱ በማጥፋት የ Supabase ነፃ ማከማቻ ቦታ ይቆጥቡ።'
+                          : 'Delete users when no longer active or after deal completion to conserve your Supabase free tier space.'}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleCleanInactiveUsers}
+                      className="py-2.5 px-4 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-xs transition-all cursor-pointer shrink-0"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>{currentLang === 'am' ? 'ቦታ ቆጣቢ፦ ንቁ ያልሆኑትን አጽዳ' : 'Clean Inactive Users (Free Space)'}</span>
+                    </button>
+                  </div>
+
+                  {spaceNotice && (
+                    <div className="p-3 bg-emerald-100 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{spaceNotice}</span>
+                    </div>
+                  )}
+
+                  {/* Search Box */}
+                  <div className="flex items-center gap-2 bg-stone-50 dark:bg-stone-850 px-3.5 py-2 rounded-xl border border-stone-200 dark:border-stone-700">
+                    <Search className="w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      placeholder={currentLang === 'am' ? 'ተጠቃሚ በስም ወይም በስልክ ቁጥር ፈልግ...' : 'Search user by name or phone...'}
+                      value={userSearchTerm}
+                      onChange={(e) => setUserSearchTerm(e.target.value)}
+                      className="bg-transparent text-xs sm:text-sm text-stone-900 dark:text-stone-100 w-full outline-hidden"
+                    />
+                    {userSearchTerm && (
+                      <button onClick={() => setUserSearchTerm('')} className="text-xs text-stone-400 hover:text-stone-600 cursor-pointer">
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Users List */}
+                  {registeredUsers.length === 0 ? (
+                    <div className="text-center py-10 text-stone-500 dark:text-stone-400 text-xs sm:text-sm bg-stone-50 dark:bg-stone-850 rounded-2xl border border-stone-200 dark:border-stone-700">
+                      {currentLang === 'am' ? 'ምንም የተመዘገበ ተጠቃሚ የለም።' : 'No registered users found in storage.'}
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {registeredUsers
+                        .filter(
+                          (u) =>
+                            u.name.toLowerCase().includes(userSearchTerm.toLowerCase()) ||
+                            u.phone.includes(userSearchTerm)
+                        )
+                        .map((u) => {
+                          const totalRemaining = (u.packages || []).reduce(
+                            (sum, p) => sum + (p.remainingUnlocks || 0),
+                            0
+                          );
+                          const unlockedHousesCount = (u.unlockedPropertyIds || []).length;
+                          const isInactive = totalRemaining === 0 && unlockedHousesCount === 0;
+
+                          return (
+                            <div
+                              key={u.id || u.phone}
+                              className={`p-4 rounded-2xl border transition-all ${
+                                isInactive
+                                  ? 'bg-stone-50/60 dark:bg-stone-850/60 border-stone-200 dark:border-stone-700/60 opacity-80'
+                                  : 'bg-white dark:bg-stone-850 border-stone-200 dark:border-stone-700 shadow-2xs'
+                              }`}
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="font-extrabold text-stone-900 dark:text-white text-sm sm:text-base">
+                                      {u.name}
+                                    </span>
+                                    <span className="font-mono font-bold text-xs bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 px-2 py-0.5 rounded-md">
+                                      📞 {u.phone}
+                                    </span>
+                                    {totalRemaining > 0 ? (
+                                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                        {totalRemaining} Unlocks Left
+                                      </span>
+                                    ) : (
+                                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
+                                        0 Credits Left
+                                      </span>
+                                    )}
+                                    {unlockedHousesCount > 0 && (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300">
+                                        {unlockedHousesCount} Houses Unlocked
+                                      </span>
+                                    )}
+                                    {isInactive && (
+                                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
+                                        Inactive / Space Candidate
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-stone-400">
+                                    Joined: {new Date(u.createdAt).toLocaleDateString()} • PIN: {u.pin}
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    onClick={() => handleDeleteUser(u.id || u.phone, u.name)}
+                                    className="py-2 px-3 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    title="Permanently delete user to free Supabase storage space"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>{currentLang === 'am' ? 'ተጠቃሚውን ሰርዝ (ቦታ ቆጥብ)' : 'Delete User (Save Space)'}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                     </div>
                   )}
                 </div>

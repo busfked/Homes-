@@ -1,6 +1,5 @@
 import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId } from '../types';
 import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS } from '../data/sampleListings';
-import { USER_PACKAGE_TIERS } from './pricing';
 
 const STORAGE_KEYS = {
   PROPERTIES: 'betdelala_properties_v3',
@@ -12,7 +11,80 @@ const STORAGE_KEYS = {
   SUPABASE_CONFIG: 'betdelala_supabase_config',
   BANNED_PHONES: 'betdelala_banned_phones_v2',
   REPORTED_BROKERS: 'betdelala_reported_brokers_v2',
+  OWNER_PROFILES: 'betdelala_owner_profiles_v1',
 };
+
+// Owner Profile Interface for remembered owners
+export interface StoredOwnerProfile {
+  phone: string;
+  name: string;
+  pin: string;
+  nationalIdFrontUrl?: string;
+  lastUsedAt: string;
+}
+export type OwnerProfile = StoredOwnerProfile;
+
+export function getStoredOwnerProfiles(): StoredOwnerProfile[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.OWNER_PROFILES);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+export function saveOwnerProfile(
+  phone: string,
+  profile: { name: string; pin: string; nationalIdFrontUrl?: string }
+): void {
+  const cleanPhone = phone.trim().replace(/[\s-]/g, '');
+  if (!cleanPhone) return;
+
+  const existing = getStoredOwnerProfiles();
+  const filtered = existing.filter(
+    (p) => p.phone.replace(/[\s-]/g, '') !== cleanPhone
+  );
+
+  const updated: StoredOwnerProfile = {
+    phone: cleanPhone,
+    name: profile.name.trim(),
+    pin: profile.pin.trim(),
+    nationalIdFrontUrl: profile.nationalIdFrontUrl,
+    lastUsedAt: new Date().toISOString(),
+  };
+
+  localStorage.setItem(STORAGE_KEYS.OWNER_PROFILES, JSON.stringify([updated, ...filtered]));
+}
+
+export function getStoredOwnerProfile(phone: string): StoredOwnerProfile | null {
+  const cleanPhone = phone.trim().replace(/[\s-]/g, '');
+  if (!cleanPhone) return null;
+
+  // 1. Check owner profiles cache
+  const profiles = getStoredOwnerProfiles();
+  const match = profiles.find((p) => p.phone.replace(/[\s-]/g, '') === cleanPhone);
+  if (match) return match;
+
+  // 2. Fallback check stored properties
+  const properties = getStoredProperties();
+  const propMatch = properties.find(
+    (p) => p.ownerPhone && p.ownerPhone.replace(/[\s-]/g, '') === cleanPhone
+  );
+  if (propMatch) {
+    const fallbackProfile: StoredOwnerProfile = {
+      phone: cleanPhone,
+      name: propMatch.ownerName || 'Owner',
+      pin: propMatch.ownerPin || '1234',
+      nationalIdFrontUrl: propMatch.nationalIdFrontUrl,
+      lastUsedAt: propMatch.createdAt,
+    };
+    saveOwnerProfile(cleanPhone, fallbackProfile);
+    return fallbackProfile;
+  }
+
+  return null;
+}
 
 // No default banned phones or reported brokers - fresh real platform state
 const DEFAULT_BANNED_PHONES: string[] = [];
@@ -209,6 +281,52 @@ export function loginOrRegisterUser(name: string, phone: string, pin: string): U
   return res.user!;
 }
 
+/**
+ * Delete a user account permanently (frees storage / supabase quota)
+ */
+export function deleteUserAccount(userIdOrPhone: string): boolean {
+  const clean = userIdOrPhone.trim().replace(/[\s-]/g, '');
+  if (!clean) return false;
+
+  const allUsers = getStoredUsers();
+  const filtered = allUsers.filter(
+    (u) => u.id !== userIdOrPhone && u.phone.replace(/[\s-]/g, '') !== clean
+  );
+
+  saveUsers(filtered);
+
+  // Clear active session if logged in as this user
+  const activeUser = getActiveUserSession();
+  if (
+    activeUser &&
+    (activeUser.id === userIdOrPhone || activeUser.phone.replace(/[\s-]/g, '') === clean)
+  ) {
+    clearActiveUserSession();
+  }
+
+  return true;
+}
+
+/**
+ * Clean inactive users who have 0 remaining credits and 0 unlocked houses
+ */
+export function cleanInactiveUsers(): { kept: UserAccount[]; removedCount: number } {
+  const allUsers = getStoredUsers();
+  const kept = allUsers.filter((u) => {
+    const totalCredits = (u.packages || []).reduce(
+      (sum, p) => sum + (p.remainingUnlocks || 0),
+      0
+    );
+    const unlockedCount = (u.unlockedPropertyIds || []).length;
+    // Keep user if they have active credits or have unlocked properties
+    return totalCredits > 0 || unlockedCount > 0;
+  });
+
+  const removedCount = allUsers.length - kept.length;
+  saveUsers(kept);
+  return { kept, removedCount };
+}
+
 export function unlockPropertyWithCredit(
   userIdOrPhone: string,
   propertyId: string,
@@ -325,12 +443,10 @@ export function creditPackageToUserPhone(
   const cleanPhone = userPhone.replace(/[\s-]/g, '');
   let userIdx = allUsers.findIndex(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
 
-  const tierDef = USER_PACKAGE_TIERS.find(t => t.id === tierId) || USER_PACKAGE_TIERS[0];
-
   const newPackage: UserCreditPackage = {
-    tierId: tierDef.id,
-    tierName: tierDef.nameEn,
-    maxPrice: tierDef.maxPrice,
+    tierId: tierId || 'tier_unlimited',
+    tierName: 'House Unlock Pack',
+    maxPrice: 999999999,
     remainingUnlocks: creditsToGrant,
     totalPurchased: creditsToGrant,
     purchasedAt: new Date().toISOString(),
@@ -627,6 +743,7 @@ export const SUPABASE_SQL_SCHEMA = `-- =========================================
 -- 1. Create Properties Table
 CREATE TABLE IF NOT EXISTS public.properties (
   id TEXT PRIMARY KEY,
+  category TEXT DEFAULT 'home',
   title TEXT NOT NULL,
   title_am TEXT,
   description TEXT,
@@ -635,7 +752,7 @@ CREATE TABLE IF NOT EXISTS public.properties (
   area_am TEXT,
   sub_city TEXT,
   exact_landmark TEXT NOT NULL,
-  property_type TEXT NOT NULL,
+  property_type TEXT,
   listing_type TEXT NOT NULL,
   price NUMERIC NOT NULL,
   price_period TEXT NOT NULL DEFAULT 'month',
@@ -643,10 +760,13 @@ CREATE TABLE IF NOT EXISTS public.properties (
   bathrooms INTEGER DEFAULT 1,
   area_sq_meters NUMERIC,
   images JSONB NOT NULL DEFAULT '[]'::jsonb,
+  national_id_front_url TEXT,
   owner_phone TEXT NOT NULL,
   owner_name TEXT NOT NULL,
   owner_pin TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
+  seller_listing_fee_birr NUMERIC,
+  seller_payment_screenshot_url TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
   last_renewed_at TIMESTAMPTZ,
@@ -654,12 +774,15 @@ CREATE TABLE IF NOT EXISTS public.properties (
   unlock_count INTEGER DEFAULT 0
 );
 
--- 2. Create Unlock Requests Table (50 Birr screenshot records)
+-- 2. Create Unlock Requests Table (5-House Package & Single Unlock screenshots)
 CREATE TABLE IF NOT EXISTS public.unlock_requests (
   id TEXT PRIMARY KEY,
-  property_id TEXT NOT NULL REFERENCES public.properties(id) ON DELETE CASCADE,
-  property_title TEXT NOT NULL,
-  property_area TEXT NOT NULL,
+  request_type TEXT DEFAULT 'single_unlock',
+  property_id TEXT,
+  property_title TEXT,
+  property_area TEXT,
+  package_tier_id TEXT,
+  package_tier_name TEXT,
   buyer_name TEXT NOT NULL,
   buyer_phone TEXT NOT NULL,
   payment_method TEXT NOT NULL,
@@ -667,50 +790,114 @@ CREATE TABLE IF NOT EXISTS public.unlock_requests (
   screenshot_url TEXT NOT NULL,
   screenshot_size_kb NUMERIC,
   status TEXT NOT NULL DEFAULT 'pending',
-  amount_birr NUMERIC NOT NULL DEFAULT 50,
+  amount_birr NUMERIC NOT NULL DEFAULT 150,
+  remaining_unlocks INTEGER DEFAULT 5,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   approved_at TIMESTAMPTZ,
   admin_note TEXT
 );
 
--- 3. Create Settings Table
+-- 3. Create Users / Home Finders Table
+CREATE TABLE IF NOT EXISTS public.users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL UNIQUE,
+  pin TEXT NOT NULL,
+  unlocked_property_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  packages JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 4. Create Settings Table
 CREATE TABLE IF NOT EXISTS public.settings (
   id TEXT PRIMARY KEY DEFAULT 'primary',
-  telebirr_number TEXT DEFAULT '0911234567',
-  telebirr_name TEXT DEFAULT 'BetDelala Brokerage',
-  cbe_account TEXT DEFAULT '1000123456789',
-  cbe_name TEXT DEFAULT 'BetDelala Real Estate',
+  telebirr_number TEXT DEFAULT '0991154337',
+  telebirr_name TEXT DEFAULT 'BetDelala (0991154337)',
+  cbe_account TEXT DEFAULT '1000131638128',
+  cbe_name TEXT DEFAULT 'BetDelala (CBE)',
   awash_account TEXT DEFAULT '0132087654321',
   awash_name TEXT DEFAULT 'BetDelala Agency',
-  fee_amount_birr NUMERIC DEFAULT 50,
+  boa_account TEXT DEFAULT '61648817',
+  boa_name TEXT DEFAULT 'BetDelala (Abyssinia)',
+  fee_amount_birr NUMERIC DEFAULT 150,
   admin_pin TEXT DEFAULT 'admin123',
   auto_delete_days INTEGER DEFAULT 7,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Enable Row Level Security (RLS) & Public Policies
+-- 5. Create Reported Brokers & Banned Phones Tables
+CREATE TABLE IF NOT EXISTS public.reported_brokers (
+  id TEXT PRIMARY KEY,
+  property_id TEXT,
+  property_title TEXT,
+  reported_phone TEXT NOT NULL,
+  reporter_phone TEXT NOT NULL,
+  reporter_role TEXT NOT NULL,
+  reason_text TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending_review',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.banned_phones (
+  phone TEXT PRIMARY KEY,
+  reason TEXT,
+  banned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 6. Enable Row Level Security (RLS) & Public Policies
 ALTER TABLE public.properties ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.unlock_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reported_brokers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.banned_phones ENABLE ROW LEVEL SECURITY;
 
+-- Properties Policies
+DROP POLICY IF EXISTS "Public Read Properties" ON public.properties;
+DROP POLICY IF EXISTS "Public Insert Properties" ON public.properties;
+DROP POLICY IF EXISTS "Public Update Properties" ON public.properties;
+DROP POLICY IF EXISTS "Public Delete Properties" ON public.properties;
 CREATE POLICY "Public Read Properties" ON public.properties FOR SELECT USING (true);
 CREATE POLICY "Public Insert Properties" ON public.properties FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Properties" ON public.properties FOR UPDATE USING (true);
 CREATE POLICY "Public Delete Properties" ON public.properties FOR DELETE USING (true);
 
+-- Unlock Requests Policies
+DROP POLICY IF EXISTS "Public Read Unlock Requests" ON public.unlock_requests;
+DROP POLICY IF EXISTS "Public Insert Unlock Requests" ON public.unlock_requests;
+DROP POLICY IF EXISTS "Public Update Unlock Requests" ON public.unlock_requests;
+DROP POLICY IF EXISTS "Public Delete Unlock Requests" ON public.unlock_requests;
 CREATE POLICY "Public Read Unlock Requests" ON public.unlock_requests FOR SELECT USING (true);
 CREATE POLICY "Public Insert Unlock Requests" ON public.unlock_requests FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Unlock Requests" ON public.unlock_requests FOR UPDATE USING (true);
+CREATE POLICY "Public Delete Unlock Requests" ON public.unlock_requests FOR DELETE USING (true);
 
+-- Users Policies (Allows user creation, updates, and admin space-saving deletion)
+DROP POLICY IF EXISTS "Public Read Users" ON public.users;
+DROP POLICY IF EXISTS "Public Insert Users" ON public.users;
+DROP POLICY IF EXISTS "Public Update Users" ON public.users;
+DROP POLICY IF EXISTS "Public Delete Users" ON public.users;
+CREATE POLICY "Public Read Users" ON public.users FOR SELECT USING (true);
+CREATE POLICY "Public Insert Users" ON public.users FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Users" ON public.users FOR UPDATE USING (true);
+CREATE POLICY "Public Delete Users" ON public.users FOR DELETE USING (true);
+
+-- Settings Policies
+DROP POLICY IF EXISTS "Public Read Settings" ON public.settings;
+DROP POLICY IF EXISTS "Public Update Settings" ON public.settings;
 CREATE POLICY "Public Read Settings" ON public.settings FOR SELECT USING (true);
 CREATE POLICY "Public Update Settings" ON public.settings FOR UPDATE USING (true);
 
--- 5. Auto-delete function for listings older than 7 days without renewal
-CREATE OR REPLACE FUNCTION delete_expired_listings()
-RETURNS void AS $$
-BEGIN
-  DELETE FROM public.properties 
-  WHERE expires_at < NOW() AND status = 'active';
-END;
-$$ LANGUAGE plpgsql;
+-- Reported Brokers & Banned Policies
+DROP POLICY IF EXISTS "Public Read Reports" ON public.reported_brokers;
+DROP POLICY IF EXISTS "Public Insert Reports" ON public.reported_brokers;
+DROP POLICY IF EXISTS "Public Update Reports" ON public.reported_brokers;
+CREATE POLICY "Public Read Reports" ON public.reported_brokers FOR SELECT USING (true);
+CREATE POLICY "Public Insert Reports" ON public.reported_brokers FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Reports" ON public.reported_brokers FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Public Read Banned" ON public.banned_phones;
+DROP POLICY IF EXISTS "Public Insert Banned" ON public.banned_phones;
+CREATE POLICY "Public Read Banned" ON public.banned_phones FOR SELECT USING (true);
+CREATE POLICY "Public Insert Banned" ON public.banned_phones FOR INSERT WITH CHECK (true);
 `;

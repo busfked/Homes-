@@ -20,12 +20,15 @@ import {
   Gauge,
   Calendar,
   Layers,
-  ShieldAlert
+  ShieldAlert,
+  ChevronLeft,
+  ChevronRight,
+  UserCheck
 } from 'lucide-react';
 import { Property, Language, UserAccount } from '../types';
 import { translations } from '../data/translations';
 import { getDaysRemaining } from '../utils/storage';
-import { formatEtbPrice } from '../utils/pricing';
+import { formatEtbPrice, calculateHouseUnlockFee } from '../utils/pricing';
 import { PROPERTY_TYPES, CAR_TYPES, MACHINERY_TYPES } from '../data/addisAreas';
 
 interface HouseDetailModalProps {
@@ -63,10 +66,8 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
 
   const category = property.category || 'home';
 
-  // Check if current logged in user has credits for this house
-  const matchingPackage = currentUser?.packages?.find(
-    (p) => p.status === 'active' && p.remainingUnlocks > 0 && property.price <= p.maxHousePrice
-  );
+  // Direct tier unlock fee: 150, 250, 350, or 500 ETB
+  const houseUnlockFee = calculateHouseUnlockFee(property.price, property.listingType, property.category);
 
   // Determine sub-type label
   let typeLabel = '';
@@ -84,6 +85,18 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
   // Clean phone number for links
   const rawPhone = property.ownerPhone.replace(/\D/g, '');
   const telegramPhone = rawPhone.startsWith('0') ? '251' + rawPhone.slice(1) : rawPhone;
+
+  const handleNextPhoto = () => {
+    if (images.length === 0) return;
+    setSelectedPhotoIndex((prev) => (prev + 1) % images.length);
+  };
+
+  const handlePrevPhoto = () => {
+    if (images.length === 0) return;
+    setSelectedPhotoIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
+
+  const isLastImage = images.length > 0 && selectedPhotoIndex === images.length - 1;
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-150">
@@ -120,16 +133,43 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
 
         {/* Modal Scrollable Body */}
         <div className="overflow-y-auto p-5 sm:p-7 space-y-6">
-          {/* Main Photo Gallery */}
+          {/* Main Photo Gallery with Carousel Controls */}
           <div className="space-y-3">
-            <div className="relative aspect-16/10 sm:aspect-21/9 bg-stone-900 rounded-2xl overflow-hidden shadow-inner flex items-center justify-center">
+            <div className="relative aspect-16/10 sm:aspect-21/9 bg-stone-900 rounded-2xl overflow-hidden shadow-inner flex items-center justify-center group">
               <img
                 src={images[selectedPhotoIndex]?.url || images[0]?.url}
                 alt={property.title}
                 className="w-full h-full object-contain sm:object-cover"
               />
-              <div className="absolute bottom-3 right-3 bg-black/60 text-white text-xs px-2.5 py-1 rounded-md backdrop-blur-xs font-medium">
-                {selectedPhotoIndex + 1} / {images.length} {t.photosCount}
+
+              {/* Prev / Next Arrows */}
+              {images.length > 1 && (
+                <>
+                  <button
+                    onClick={handlePrevPhoto}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-colors cursor-pointer"
+                    title="Previous photo"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={handleNextPhoto}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-colors cursor-pointer"
+                    title="Next photo"
+                  >
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </>
+              )}
+
+              {/* Photo Count badge */}
+              <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs px-3 py-1 rounded-lg backdrop-blur-xs font-bold flex items-center gap-1.5">
+                <span>{selectedPhotoIndex + 1} / {images.length} {t.photosCount}</span>
+                {isLastImage && (
+                  <span className="text-[10px] bg-emerald-500 text-white px-1.5 py-0.5 rounded font-black">
+                    {currentLang === 'am' ? 'የመጨረሻ ፎቶ' : 'Last Photo'}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -148,13 +188,28 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
                   >
                     <img src={img.url} alt={`Thumb ${idx}`} className="w-full h-full object-cover" />
                     <span className="absolute bottom-0 right-0 bg-stone-900/80 text-[10px] text-white px-1 rounded-tl">
-                      {img.compressedSizeKb} KB
+                      {idx + 1}
                     </span>
                   </button>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Quick Indicator after Last Photo */}
+          {isLastImage && !isUnlocked && (
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700/60 rounded-xl flex items-center justify-between gap-3 text-xs">
+              <span className="font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-emerald-600" />
+                {currentLang === 'am'
+                  ? 'ሁሉንም ፎቶዎች አይተዋል! የባለቤቱን ስልክ ቁጥር ከታች ይክፈቱ።'
+                  : 'All photos viewed! Owner contact details can now be unlocked below.'}
+              </span>
+              <span className="font-black text-emerald-700 dark:text-emerald-300 bg-white dark:bg-stone-900 px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700">
+                {houseUnlockFee} {t.etb}
+              </span>
+            </div>
+          )}
 
           {/* Title & Area Header */}
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-5 border-b border-stone-200 dark:border-stone-800">
@@ -299,9 +354,15 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
           {/* UNLOCKED vs LOCKED CONTACT BOX */}
           {isUnlocked ? (
             <div className="bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-400/80 dark:border-emerald-700 rounded-2xl p-5 sm:p-6 space-y-4 shadow-sm animate-in zoom-in-95 duration-200">
-              <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-200 font-extrabold text-base sm:text-lg">
-                <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                <span>{t.ownerContactUnlocked}</span>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-200 font-extrabold text-base sm:text-lg">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  <span>{t.ownerContactUnlocked}</span>
+                </div>
+
+                <span className="px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-black">
+                  ✓ {currentLang === 'am' ? 'የተረጋገጠ ባለቤት' : 'Verified Direct Contact'}
+                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm bg-white dark:bg-stone-800 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800">
@@ -348,19 +409,31 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
             </div>
           ) : (
             <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/60 dark:from-stone-850 dark:to-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-700/80 rounded-2xl p-5 sm:p-6 space-y-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <Lock className="w-5 h-5" />
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-stone-900 dark:text-stone-100 text-base">
+                      {currentLang === 'am' ? 'የባለቤቱ ስልክ ቁጥር እና ትክክለኛ መገኛ ተቆልፏል' : 'Owner Phone & Exact Address are Locked'}
+                    </h4>
+                    <p className="text-stone-600 dark:text-stone-300 text-xs sm:text-sm mt-1 leading-relaxed">
+                      {currentLang === 'am'
+                        ? `የዚህን ቤት የባለቤት ስልክ እና ትክክለኛ መገኛ በ ${houseUnlockFee} ብር ክፍያ በቀጥታ ይክፈቱ።`
+                        : `Unlock direct verified owner contact for this listing with a one-time ${houseUnlockFee} ETB payment.`}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-bold text-stone-900 dark:text-stone-100 text-base">
-                    {currentLang === 'am' ? 'የባለቤቱ ስልክ ቁጥር እና ትክክለኛ መገኛ ተቆልፏል' : 'Owner Phone & Exact Address are Locked'}
-                  </h4>
-                  <p className="text-stone-600 dark:text-stone-300 text-xs sm:text-sm mt-1 leading-relaxed">
-                    {property.listingType === 'sale'
-                      ? (currentLang === 'am' ? 'የባለቤቱን ስልክ እና መረጃ ለማግኘት 500 ብር ይክፈሉ' : 'Unlock owner direct phone & exact location for 500 ETB.')
-                      : (currentLang === 'am' ? 'የባለቤቱን ስልክ እና መረጃ ለማግኘት 100 ብር ይክፈሉ' : 'Unlock owner direct phone & exact location for 100 ETB.')}
-                  </p>
+
+                {/* Direct Unlock Fee Badge */}
+                <div className="shrink-0 text-right">
+                  <span className="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white text-sm font-black font-mono shadow-xs block">
+                    {houseUnlockFee} {t.etb}
+                  </span>
+                  <span className="text-[10px] text-emerald-800 dark:text-emerald-300 font-bold block mt-0.5">
+                    {currentLang === 'am' ? 'የመክፈቻ ዋጋ' : 'Unlock Fee'}
+                  </span>
                 </div>
               </div>
 
@@ -368,38 +441,20 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
                 <div className="py-3 px-4 bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold text-center">
                   {t.occupiedStatus} - {currentLang === 'am' ? 'ይህ ንብረት ተይዟል' : 'This listing is already taken'}
                 </div>
-              ) : matchingPackage && onUseCreditToUnlock ? (
-                <div className="space-y-2">
-                  <button
-                    onClick={() => onUseCreditToUnlock(property)}
-                    className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-sm sm:text-base font-extrabold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
-                  >
-                    <Sparkles className="w-4 h-4 text-emerald-200" />
-                    <span>
-                      {currentLang === 'am'
-                        ? `ከጥቅልዎ 1 ንብረት ይክፈቱ (${matchingPackage.remainingUnlocks} ይቀራል)`
-                        : `Unlock with 1 Package Credit (${matchingPackage.remainingUnlocks} remaining)`}
-                    </span>
-                  </button>
-                  <p className="text-[11px] text-center text-emerald-800 dark:text-emerald-300 font-semibold">
-                    {currentLang === 'am'
-                      ? `የተገዛ የ${matchingPackage.maxHousePrice.toLocaleString()} ብር ጥቅል አለዎት`
-                      : `You have an active package for houses up to ${matchingPackage.maxHousePrice.toLocaleString()} ETB`}
-                  </p>
-                </div>
               ) : (
                 <button
+                  id="btn-unlock-owner-contact"
                   onClick={() => {
                     onClose();
                     onOpenUnlockModal(property);
                   }}
-                  className="w-full py-3.5 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm sm:text-base font-extrabold flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                  className="w-full py-4 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-base font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
                 >
-                  <Lock className="w-4 h-4 text-emerald-200" />
+                  <Lock className="w-5 h-5 text-emerald-200" />
                   <span>
-                    {property.listingType === 'sale'
-                      ? t.unlockSaleContactBtn
-                      : t.unlockRentContactBtn}
+                    {currentLang === 'am'
+                      ? `የባለቤቱን ስልክ ይክፈቱ (${houseUnlockFee} ብር)`
+                      : `Unlock Owner Contact (${houseUnlockFee} ETB)`}
                   </span>
                 </button>
               )}
