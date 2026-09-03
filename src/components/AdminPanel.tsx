@@ -35,8 +35,17 @@ import {
   getDaysRemaining, 
   getStoredUsers, 
   deleteUserAccount, 
-  cleanInactiveUsers 
+  cleanInactiveUsers,
+  getSupabaseConfig,
+  saveSupabaseConfig
 } from '../utils/storage';
+import { 
+  testSupabaseConnection, 
+  resetSupabaseClient, 
+  savePropertyToSupabase, 
+  saveUnlockRequestToSupabase, 
+  saveUserToSupabase 
+} from '../utils/supabaseClient';
 import { formatFileSize } from '../utils/imageCompressor';
 
 interface AdminPanelProps {
@@ -162,6 +171,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [copiedSql, setCopiedSql] = useState(false);
   const [searchFilter, setSearchFilter] = useState('');
 
+  // Supabase live connection testing states
+  const initialSupabaseConfig = getSupabaseConfig();
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(initialSupabaseConfig.url || '');
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(initialSupabaseConfig.anonKey || '');
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<{
+    success: boolean;
+    message: string;
+    hasTables: boolean;
+  } | null>(null);
+  const [isPushingData, setIsPushingData] = useState(false);
+  const [pushStatusMsg, setPushStatusMsg] = useState<string | null>(null);
+
   // Metrics
   const pendingRequests = unlockRequests.filter((r) => r.status === 'pending');
   const approvedRequests = unlockRequests.filter((r) => r.status === 'approved');
@@ -283,6 +305,66 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         origin: { y: 0.6 },
       });
     } catch {}
+  };
+
+  const handleTestAndSaveSupabase = async () => {
+    const cleanUrl = supabaseUrlInput.trim();
+    const cleanKey = supabaseKeyInput.trim();
+    if (!cleanUrl || !cleanKey) {
+      setConnectionStatus({
+        success: false,
+        message: currentLang === 'am' ? 'እባክዎ ሁለቱንም የ Supabase URL እና Anon Key ያስገቡ።' : 'Please provide both your Supabase Project URL and Anon Key.',
+        hasTables: false,
+      });
+      return;
+    }
+
+    setIsTestingConnection(true);
+    setConnectionStatus(null);
+    try {
+      saveSupabaseConfig({ url: cleanUrl, anonKey: cleanKey, isEnabled: true });
+      resetSupabaseClient();
+      const res = await testSupabaseConnection();
+      setConnectionStatus(res);
+      if (res.success && onManualSync) {
+        onManualSync();
+      }
+    } catch (err: any) {
+      setConnectionStatus({
+        success: false,
+        message: `Connection failed: ${err?.message || 'Network error'}`,
+        hasTables: false,
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  const handlePushLocalDataToSupabase = async () => {
+    setIsPushingData(true);
+    setPushStatusMsg(null);
+    try {
+      let savedProps = 0;
+      for (const prop of properties) {
+        const ok = await savePropertyToSupabase(prop);
+        if (ok) savedProps++;
+      }
+      for (const req of unlockRequests) {
+        await saveUnlockRequestToSupabase(req);
+      }
+      for (const user of registeredUsers) {
+        await saveUserToSupabase(user);
+      }
+      setPushStatusMsg(
+        currentLang === 'am'
+          ? `✓ ${savedProps} ቤቶች፣ የክፍያ ጥያቄዎች እና ተጠቃሚዎች ወደ Supabase ዳታቤዝዎ ተልከዋል!`
+          : `✓ Successfully synced ${savedProps} listings, unlock requests & users directly to your Supabase database!`
+      );
+    } catch (err: any) {
+      setPushStatusMsg(`Push failed: ${err?.message || 'Error occurred'}`);
+    } finally {
+      setIsPushingData(false);
+    }
   };
 
   const handleCopySql = () => {
@@ -1392,16 +1474,147 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* TAB 4: FREE SUPABASE & VERCEL DEPLOYMENT GUIDE */}
               {activeAdminTab === 'deploy' && (
                 <div className="space-y-6">
-                  <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl">
-                    <h4 className="font-extrabold text-emerald-950 dark:text-emerald-200 text-sm flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>{currentLang === 'am' ? 'በነጻ Vercel እና Supabase ላይ የማሰራጨት መመሪያ' : 'Free 100% Vercel & Supabase Deployment Guide'}</span>
-                    </h4>
-                    <p className="text-xs text-emerald-900/90 dark:text-emerald-300 mt-1 leading-relaxed">
-                      {currentLang === 'am'
-                        ? 'ይህ መተግበሪያ በ GitHub እና Vercel ላይ በነጻ ለመጫን ተዘጋጅቷል። ፎቶዎች በስልኩ ላይ በትንሽ ኪሎባይት ስለሚጨመቁ የ Supabase ነፃ ኮታ (Free Tier) ሳይሞላ ለረጅም ጊዜ ያገለግላል።'
-                        : 'This app is pre-architected for instant free Vercel + GitHub deployment with client-side canvas compression to maximize Supabase free storage.'}
-                    </p>
+                  {/* Database Connection Test & Credentials Card */}
+                  <div className="bg-stone-50 dark:bg-stone-850 p-5 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-4 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-200 dark:border-stone-700">
+                      <div>
+                        <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-sm flex items-center gap-2">
+                          <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <span>{currentLang === 'am' ? 'የ Supabase ዳታቤዝ ግንኙነት መፈተሻ' : 'Supabase Live Database Connection'}</span>
+                        </h4>
+                        <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                          {currentLang === 'am'
+                            ? 'የ Supabase Project URL እና Anon Key አስገብተው ግንኙነቱን ያረጋግጡ።'
+                            : 'Enter your project credentials to verify live read/write database connectivity.'}
+                        </p>
+                      </div>
+
+                      <div>
+                        {connectionStatus?.success ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                            <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
+                            <span>{currentLang === 'am' ? 'የተገናኘ (Active)' : 'Connected & Active'}</span>
+                          </span>
+                        ) : connectionStatus && !connectionStatus.success ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                            <span className="w-2 h-2 rounded-full bg-rose-600"></span>
+                            <span>{currentLang === 'am' ? 'ግንኙነት አልተሳካም' : 'Disconnected'}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300">
+                            <span>{currentLang === 'am' ? 'ያልተፈተሸ' : 'Not Tested Yet'}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Supabase URL & Anon Key Inputs */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-stone-700 dark:text-stone-300 mb-1">
+                          Supabase Project URL
+                        </label>
+                        <input
+                          type="url"
+                          value={supabaseUrlInput}
+                          onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                          placeholder="https://xxxxxxxxxxxxxx.supabase.co"
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-xl text-xs font-mono text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-stone-700 dark:text-stone-300 mb-1">
+                          Supabase Anon / Public Key
+                        </label>
+                        <input
+                          type="password"
+                          value={supabaseKeyInput}
+                          onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                          placeholder="sb_publishable_... or eyJhbGciOi..."
+                          className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-900 border border-stone-300 dark:border-stone-700 rounded-xl text-xs font-mono text-stone-900 dark:text-stone-100 focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* How to find info box */}
+                    <div className="p-3 bg-stone-100 dark:bg-stone-900/60 rounded-xl border border-stone-200 dark:border-stone-800 text-[11px] text-stone-600 dark:text-stone-400 space-y-1">
+                      <div className="font-bold text-stone-800 dark:text-stone-200 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>
+                          {currentLang === 'am' 
+                            ? 'እነዚህን ከ Supabase እንዴት ማግኘት ይቻላል?' 
+                            : 'Where to find these in your Supabase Dashboard:'}
+                        </span>
+                      </div>
+                      <p>
+                        {currentLang === 'am'
+                          ? 'በ Supabase ውስጥ ወደ Project Settings (⚙️ የግራ ታችኛው ማዕዘን) ➔ "API" ወይም "Data API" ይሂዱ ➔ Project URL እና Project API Key (anon/public) የሚለውን ኮፒ ያድርጉ።'
+                          : 'In Supabase Dashboard (Home delala) ➔ Click ⚙️ Project Settings (bottom left) ➔ Click "API" ➔ Copy the "Project URL" and "Project API Key (anon/public)".'}
+                      </p>
+                    </div>
+
+                    {/* Connection Result Feedback */}
+                    {connectionStatus && (
+                      <div
+                        className={`p-3.5 rounded-xl border text-xs flex items-start gap-2.5 ${
+                          connectionStatus.success
+                            ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                            : 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+                        }`}
+                      >
+                        {connectionStatus.success ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        )}
+                        <div className="space-y-1">
+                          <p className="font-bold">
+                            {connectionStatus.success
+                              ? (currentLang === 'am' ? '✓ ግንኙነቱ ተረጋግጧል!' : '✓ Database Connected Successfully!')
+                              : (currentLang === 'am' ? '✗ ግንኙነቱ አልተሳካም' : '✗ Connection Verification Failed')}
+                          </p>
+                          <p className="opacity-90">{connectionStatus.message}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Push Data Status Message */}
+                    {pushStatusMsg && (
+                      <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>{pushStatusMsg}</span>
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap items-center gap-3 pt-2">
+                      <button
+                        onClick={handleTestAndSaveSupabase}
+                        disabled={isTestingConnection}
+                        className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs transition-all"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isTestingConnection ? 'animate-spin' : ''}`} />
+                        <span>
+                          {isTestingConnection
+                            ? (currentLang === 'am' ? 'በመፈተሽ ላይ...' : 'Testing Connection...')
+                            : (currentLang === 'am' ? '⚡ ግንኙነቱን ፈትሽና አስቀምጥ' : '⚡ Test & Save Connection')}
+                        </span>
+                      </button>
+
+                      <button
+                        onClick={handlePushLocalDataToSupabase}
+                        disabled={isPushingData}
+                        className="py-2.5 px-4 bg-stone-900 dark:bg-stone-700 hover:bg-stone-800 active:scale-98 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer shadow-xs transition-all"
+                      >
+                        <Building className={`w-3.5 h-3.5 ${isPushingData ? 'animate-bounce' : ''}`} />
+                        <span>
+                          {isPushingData
+                            ? (currentLang === 'am' ? 'ወደ ዳታቤዝ በመላክ ላይ...' : 'Syncing Data...')
+                            : (currentLang === 'am' ? '🚀 ሁሉንም ቤቶች ወደ Supabase ላክ' : '🚀 Push Local Data to Supabase')}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Step 1: Supabase SQL Setup */}
@@ -1409,9 +1622,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="w-6 h-6 rounded-full bg-stone-900 dark:bg-stone-700 text-white text-xs font-bold flex items-center justify-center">1</span>
-                        <h5 className="font-bold text-stone-900 dark:text-stone-100 text-sm">
-                          {currentLang === 'am' ? 'የ Supabase ዳታቤዝ ሰንጠረዦችን መፍጠር (SQL Schema)' : 'Run SQL Schema in Supabase'}
-                        </h5>
+                        <div>
+                          <h5 className="font-bold text-stone-900 dark:text-stone-100 text-sm">
+                            {currentLang === 'am' ? 'የ Supabase ዳታቤዝ ሰንጠረዦች (SQL Schema)' : 'Run SQL Schema in Supabase'}
+                          </h5>
+                          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                            {currentLang === 'am' ? '✓ በ Supabase ውስጥ "Success" ካለዎት ተጠናቋል!' : '✓ If you saw "Success. No rows returned", this step is complete!'}
+                          </span>
+                        </div>
                       </div>
                       <button
                         onClick={handleCopySql}
@@ -1422,23 +1640,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </button>
                     </div>
 
-                    <pre className="bg-stone-950 text-stone-200 p-3.5 rounded-xl text-[11px] font-mono overflow-x-auto max-h-48">
+                    <pre className="bg-stone-950 text-stone-200 p-3.5 rounded-xl text-[11px] font-mono overflow-x-auto max-h-40">
                       {SUPABASE_SQL_SCHEMA}
                     </pre>
                   </div>
 
                   {/* Step 2: Vercel Deploy Steps */}
-                  <div className="bg-stone-50 dark:bg-stone-850 p-4 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-2 text-xs text-stone-700 dark:text-stone-300">
+                  <div className="bg-stone-50 dark:bg-stone-850 p-4 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-3 text-xs text-stone-700 dark:text-stone-300">
                     <div className="flex items-center gap-2">
                       <span className="w-6 h-6 rounded-full bg-stone-900 dark:bg-stone-700 text-white text-xs font-bold flex items-center justify-center">2</span>
                       <h5 className="font-bold text-stone-900 dark:text-stone-100 text-sm">
-                        {currentLang === 'am' ? 'በ GitHub እና Vercel ላይ በነጻ መጫን' : 'Deploy to Vercel via GitHub'}
+                        {currentLang === 'am' ? 'በ GitHub እና Vercel ላይ በነጻ መጫን' : 'Deploying to Vercel via GitHub'}
                       </h5>
                     </div>
-                    <ol className="list-decimal pl-5 space-y-1 text-stone-600 dark:text-stone-400">
-                      <li>Push this repository to your GitHub account.</li>
-                      <li>Go to <strong>vercel.com/new</strong> and import the GitHub repository.</li>
-                      <li>Vercel automatically detects Vite + React and builds in ~20 seconds for free!</li>
+                    <ol className="list-decimal pl-5 space-y-2 text-stone-600 dark:text-stone-400">
+                      <li>
+                        <strong>Push to GitHub:</strong> Export or push this project to your GitHub repository.
+                      </li>
+                      <li>
+                        <strong>Import into Vercel:</strong> Visit <strong>vercel.com/new</strong> and select your repository.
+                      </li>
+                      <li>
+                        <strong>Add Environment Variables in Vercel:</strong> Under <em>"Environment Variables"</em>, add:
+                        <div className="mt-1 space-y-1 font-mono text-[11px] bg-stone-100 dark:bg-stone-900 p-2.5 rounded-lg border border-stone-200 dark:border-stone-800">
+                          <div><span className="text-emerald-700 dark:text-emerald-400 font-bold">VITE_SUPABASE_URL</span> = your Supabase URL</div>
+                          <div><span className="text-emerald-700 dark:text-emerald-400 font-bold">VITE_SUPABASE_ANON_KEY</span> = your Supabase anon public key</div>
+                        </div>
+                      </li>
+                      <li>
+                        <strong>Deploy:</strong> Click <strong>Deploy</strong>. Vercel will build your app in ~25 seconds and give you a live HTTPS web address!
+                      </li>
                     </ol>
                   </div>
                 </div>

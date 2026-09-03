@@ -203,3 +203,16 @@ CREATE POLICY "Public broker reports" ON public.reported_brokers
 
 CREATE POLICY "Public banned phones read" ON public.banned_phones
     FOR ALL USING (true);
+
+-- 10. SAFE IDEMPOTENT COLUMN ADDITIONS (Guarantees 100% app compatibility)
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS unlocked_property_ids JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS packages JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS sub_city TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS area_am TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS area_sq_meters NUMERIC;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS seller_listing_fee_birr NUMERIC;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS seller_payment_screenshot_url TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS last_renewed_at TIMESTAMPTZ;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS view_count INTEGER DEFAULT 0;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS unlock_count INTEGER DEFAULT 0;
+ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS admin_note TEXT;
