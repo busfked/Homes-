@@ -1,5 +1,6 @@
 import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId } from '../types';
 import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS } from '../data/sampleListings';
+import { PRICE_TIERS } from './pricing';
 
 const STORAGE_KEYS = {
   PROPERTIES: 'betdelala_properties_v3',
@@ -375,14 +376,16 @@ export function getEligiblePackageForPrice(user: UserAccount, price: number, lis
  * Deduct 1 credit from user package and unlock the property
  */
 export function deductUserCreditAndUnlock(
-  userPhone: string,
+  userPhoneOrId: string,
   propertyId: string,
   propertyPrice: number,
   listingType?: string
 ): { success: boolean; message: string; updatedUser?: UserAccount } {
   const allUsers = getStoredUsers();
-  const cleanPhone = userPhone.replace(/[\s-]/g, '');
-  const userIdx = allUsers.findIndex(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+  const cleanPhone = userPhoneOrId.replace(/[\s-]/g, '');
+  const userIdx = allUsers.findIndex(
+    u => u.phone.replace(/[\s-]/g, '') === cleanPhone || u.id === userPhoneOrId
+  );
 
   if (userIdx < 0) {
     return { success: false, message: 'User not found. Please log in.' };
@@ -393,17 +396,18 @@ export function deductUserCreditAndUnlock(
     return { success: true, message: 'Already unlocked.', updatedUser: user };
   }
 
-  // Find eligible package
+  // Find eligible package (must have remaining unlocks and cover this price or be unlimited)
   const pkgIdx = user.packages.findIndex(p => {
     if (p.remainingUnlocks <= 0) return false;
-    if (listingType === 'sale') return p.tierId === 'tier_unlimited';
+    if (p.tierId === 'tier_unlimited') return true;
+    if (listingType === 'sale') return false;
     return propertyPrice <= p.maxPrice;
   });
 
   if (pkgIdx < 0) {
     return {
       success: false,
-      message: 'No active credit package available for this price range. Please purchase a package or single unlock.',
+      message: 'No active credit package available for this price range. Please unlock to get a 5-house package.',
     };
   }
 
@@ -411,7 +415,7 @@ export function deductUserCreditAndUnlock(
   const updatedPackages = [...user.packages];
   updatedPackages[pkgIdx] = {
     ...updatedPackages[pkgIdx],
-    remainingUnlocks: updatedPackages[pkgIdx].remainingUnlocks - 1,
+    remainingUnlocks: Math.max(0, updatedPackages[pkgIdx].remainingUnlocks - 1),
   };
 
   const updatedUser: UserAccount = {
@@ -426,7 +430,7 @@ export function deductUserCreditAndUnlock(
 
   return {
     success: true,
-    message: `Unlocked successfully! ${updatedPackages[pkgIdx].remainingUnlocks} unlocks remaining in your ${updatedPackages[pkgIdx].tierName}.`,
+    message: `Unlocked successfully! ${updatedPackages[pkgIdx].remainingUnlocks} unlocks remaining in your package.`,
     updatedUser,
   };
 }
@@ -437,16 +441,22 @@ export function deductUserCreditAndUnlock(
 export function creditPackageToUserPhone(
   userPhone: string,
   tierId: PackageTierId,
-  creditsToGrant: number = 5
+  creditsToGrant: number = 5,
+  customMaxPrice?: number,
+  customTierName?: string
 ): { success: boolean; updatedUser?: UserAccount } {
   const allUsers = getStoredUsers();
   const cleanPhone = userPhone.replace(/[\s-]/g, '');
   let userIdx = allUsers.findIndex(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
 
+  const matchedTier = PRICE_TIERS.find(t => t.id === tierId);
+  const maxPrice = customMaxPrice || matchedTier?.maxPrice || 999999999;
+  const tierName = customTierName || matchedTier?.nameEn || '5-House Package';
+
   const newPackage: UserCreditPackage = {
     tierId: tierId || 'tier_unlimited',
-    tierName: 'House Unlock Pack',
-    maxPrice: 999999999,
+    tierName: tierName,
+    maxPrice: maxPrice,
     remainingUnlocks: creditsToGrant,
     totalPurchased: creditsToGrant,
     purchasedAt: new Date().toISOString(),

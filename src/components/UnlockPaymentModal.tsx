@@ -20,7 +20,7 @@ import { Property, Language, PaymentMethod, UnlockRequest, PaymentSettings, User
 import { translations } from '../data/translations';
 import { compressImage } from '../utils/imageCompressor';
 import { isPhoneBanned, loginOrRegisterUser } from '../utils/storage';
-import { calculateHouseUnlockFee, formatEtbPrice } from '../utils/pricing';
+import { calculateHouseUnlockFee, formatEtbPrice, getTierForProperty } from '../utils/pricing';
 
 interface UnlockPaymentModalProps {
   property: Property | null;
@@ -144,6 +144,8 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
       return;
     }
 
+    const tier = getTierForProperty(property.price, property.listingType, property.category);
+
     const newRequest: UnlockRequest = {
       id: `req-${Date.now().toString(36)}`,
       type: 'single_unlock',
@@ -151,6 +153,8 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
       propertyId: property.id,
       propertyTitle: property.title,
       propertyArea: property.area,
+      packageTierId: tier.id,
+      packageTierName: tier.nameEn,
       buyerName: cleanName,
       buyerPhone: cleanPhone,
       paymentMethod: paymentMethod,
@@ -159,6 +163,7 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
       screenshotSizeKb: screenshotSizeKb,
       status: 'pending',
       amountBirr: unlockFee,
+      remainingUnlocks: 5,
       createdAt: new Date().toISOString(),
     };
 
@@ -181,12 +186,12 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-black text-stone-900 dark:text-stone-100">
-                {currentLang === 'am' ? 'የባለቤቱን ስልክ መክፈቻ' : 'Unlock Owner Contact'} ({unlockFee} {t.etb})
+                {currentLang === 'am' ? 'የ 5 ቤቶች መክፈቻ ጥቅል' : '5-Home Unlock Package'} ({unlockFee} {t.etb})
               </h2>
               <p className="text-xs text-stone-500 dark:text-stone-400">
                 {currentLang === 'am'
-                  ? `የዚህን ቤት የባለቤት ስልክ እና ትክክለኛ መገኛ ለመክፈት ${unlockFee} ብር ይክፈሉ`
-                  : `Pay ${unlockFee} ETB to unlock this listing's direct owner contact`}
+                  ? `አንዴ ${unlockFee} ብር ከፍለው ይህንን ቤት ጨምሮ 5 ቤቶችን ይክፈቱ!`
+                  : `Pay ${unlockFee} ETB once to unlock this home + 4 more in this similar range!`}
               </p>
             </div>
           </div>
@@ -251,12 +256,34 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
               </div>
               <div className="text-right shrink-0 bg-white dark:bg-stone-900 px-3 py-2 rounded-xl border border-stone-200 dark:border-stone-700">
                 <span className="text-[10px] text-stone-500 dark:text-stone-400 block font-bold uppercase tracking-wider">
-                  {currentLang === 'am' ? 'የመክፈቻ ክፍያ' : 'Unlock Fee'}
+                  {currentLang === 'am' ? 'የ 5 ቤቶች ዋጋ' : '5-Home Price'}
                 </span>
                 <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
                   {unlockFee} <span className="text-xs font-bold text-stone-700 dark:text-stone-300">{t.etb}</span>
                 </span>
               </div>
+            </div>
+
+            {/* 5-Home Bundle Value Proposition */}
+            <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700/60 rounded-2xl flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="font-extrabold text-emerald-950 dark:text-emerald-200 block text-xs sm:text-sm">
+                    {currentLang === 'am' ? '5 ቤቶችን የመክፈት እድል ተካቷል!' : 'Includes 5 Home Unlocks!'}
+                  </span>
+                  <span className="text-[11px] text-emerald-800 dark:text-emerald-300">
+                    {currentLang === 'am'
+                      ? `ይህን ቤት ወዲያውኑ ይከፍታል + በተመሳሳይ የዋጋ ደረጃ ውስጥ 4 ተጨማሪ ቤቶች በነፃ ይከፈቱልዎታል!`
+                      : `Unlocks this house + gives you 4 more unlocks in this similar price range!`}
+                  </span>
+                </div>
+              </div>
+              <span className="shrink-0 px-2.5 py-1 rounded-full bg-emerald-600 text-white font-black text-xs font-mono shadow-xs">
+                5 {currentLang === 'am' ? 'ቤቶች' : 'Homes'}
+              </span>
             </div>
 
             {/* STEP 1: PAYMENT METHOD SELECTOR & OFFICIAL ACCOUNTS */}

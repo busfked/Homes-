@@ -407,59 +407,110 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
                 </a>
               </div>
             </div>
-          ) : (
-            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/60 dark:from-stone-850 dark:to-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-700/80 rounded-2xl p-5 sm:p-6 space-y-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                    <Lock className="w-5 h-5" />
+          ) : (() => {
+            // Check if user has an active package that covers this property's price range
+            const matchingPackage = currentUser?.packages?.find(
+              (p) => p.remainingUnlocks > 0 && (p.tierId === 'tier_unlimited' || (property.listingType !== 'sale' && property.price <= p.maxPrice))
+            );
+
+            if (matchingPackage) {
+              return (
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-400 dark:border-emerald-600 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xs animate-in zoom-in-95 duration-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                        <Sparkles className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-sm sm:text-base">
+                          {currentLang === 'am' ? 'የተከፈለ ንቁ ጥቅል አለዎት!' : 'Active Range Unlock Package!'}
+                        </h4>
+                        <p className="text-xs text-stone-600 dark:text-stone-300">
+                          {currentLang === 'am'
+                            ? `በዚህ የዋጋ ደረጃ ውስጥ ተጨማሪ ${matchingPackage.remainingUnlocks} ቤቶችን ያለተጨማሪ ክፍያ መክፈት ይችላሉ።`
+                            : `You have ${matchingPackage.remainingUnlocks} remaining unlock credits for this similar price range.`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-xs font-mono shadow-xs">
+                      {matchingPackage.remainingUnlocks} {currentLang === 'am' ? 'ቀረ' : 'left'}
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-stone-900 dark:text-stone-100 text-base">
-                      {currentLang === 'am' ? 'የባለቤቱ ስልክ ቁጥር እና ትክክለኛ መገኛ ተቆልፏል' : 'Owner Phone & Exact Address are Locked'}
-                    </h4>
-                    <p className="text-stone-600 dark:text-stone-300 text-xs sm:text-sm mt-1 leading-relaxed">
+
+                  <button
+                    id="btn-use-credit-unlock"
+                    onClick={() => {
+                      if (onUseCreditToUnlock) {
+                        onUseCreditToUnlock(property);
+                      }
+                    }}
+                    className="w-full py-4 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-base font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-5 h-5 text-emerald-200" />
+                    <span>
                       {currentLang === 'am'
-                        ? `የዚህን ቤት የባለቤት ስልክ እና ትክክለኛ መገኛ በ ${houseUnlockFee} ብር ክፍያ በቀጥታ ይክፈቱ።`
-                        : `Unlock direct verified owner contact for this listing with a one-time ${houseUnlockFee} ETB payment.`}
-                    </p>
+                        ? `በ 1 ክሬዲት የባለቤቱን ስልክ ይክፈቱ (${matchingPackage.remainingUnlocks} ይቀራል)`
+                        : `Use 1 Credit to Unlock Owner Contact (${matchingPackage.remainingUnlocks} remaining)`}
+                    </span>
+                  </button>
+                </div>
+              );
+            }
+
+            return (
+              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/60 dark:from-stone-850 dark:to-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-700/80 rounded-2xl p-5 sm:p-6 space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                      <Lock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-stone-900 dark:text-stone-100 text-base">
+                        {currentLang === 'am' ? 'የባለቤቱ ስልክ ቁጥር እና ትክክለኛ መገኛ ተቆልፏል' : 'Owner Phone & Exact Address are Locked'}
+                      </h4>
+                      <p className="text-stone-600 dark:text-stone-300 text-xs sm:text-sm mt-1 leading-relaxed">
+                        {currentLang === 'am'
+                          ? `አንዴ ${houseUnlockFee} ብር በመክፈል ይህን ቤት ጨምሮ በተመሳሳይ የዋጋ ደረጃ ውስጥ ያሉ 5 ቤቶችን ይክፈቱ!`
+                          : `Pay ${houseUnlockFee} ETB once to unlock 5 homes in this similar price range (this house + 4 more)!`}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Direct Unlock Fee Badge */}
+                  <div className="shrink-0 text-right">
+                    <span className="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white text-sm font-black font-mono shadow-xs block">
+                      {houseUnlockFee} {t.etb}
+                    </span>
+                    <span className="text-[10px] text-emerald-800 dark:text-emerald-300 font-bold block mt-0.5">
+                      {currentLang === 'am' ? 'የ 5 ቤቶች ጥቅል' : '5 Homes Pack'}
+                    </span>
                   </div>
                 </div>
 
-                {/* Direct Unlock Fee Badge */}
-                <div className="shrink-0 text-right">
-                  <span className="px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white text-sm font-black font-mono shadow-xs block">
-                    {houseUnlockFee} {t.etb}
-                  </span>
-                  <span className="text-[10px] text-emerald-800 dark:text-emerald-300 font-bold block mt-0.5">
-                    {currentLang === 'am' ? 'የመክፈቻ ዋጋ' : 'Unlock Fee'}
-                  </span>
-                </div>
+                {property.status === 'occupied' ? (
+                  <div className="py-3 px-4 bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold text-center">
+                    {t.occupiedStatus} - {currentLang === 'am' ? 'ይህ ንብረት ተይዟል' : 'This listing is already taken'}
+                  </div>
+                ) : (
+                  <button
+                    id="btn-unlock-owner-contact"
+                    onClick={() => {
+                      onClose();
+                      onOpenUnlockModal(property);
+                    }}
+                    className="w-full py-4 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-base font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                  >
+                    <Sparkles className="w-5 h-5 text-emerald-200" />
+                    <span>
+                      {currentLang === 'am'
+                        ? `ይህን ቤት ይክፈቱ (በ ${houseUnlockFee} ብር 5 ቤቶችን የማየት ጥቅል)`
+                        : `Unlock (5 Homes in this Range for ${houseUnlockFee} ETB)`}
+                    </span>
+                  </button>
+                )}
               </div>
-
-              {property.status === 'occupied' ? (
-                <div className="py-3 px-4 bg-stone-200 dark:bg-stone-800 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold text-center">
-                  {t.occupiedStatus} - {currentLang === 'am' ? 'ይህ ንብረት ተይዟል' : 'This listing is already taken'}
-                </div>
-              ) : (
-                <button
-                  id="btn-unlock-owner-contact"
-                  onClick={() => {
-                    onClose();
-                    onOpenUnlockModal(property);
-                  }}
-                  className="w-full py-4 px-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-base font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
-                >
-                  <Lock className="w-5 h-5 text-emerald-200" />
-                  <span>
-                    {currentLang === 'am'
-                      ? `የባለቤቱን ስልክ ይክፈቱ (${houseUnlockFee} ብር)`
-                      : `Unlock Owner Contact (${houseUnlockFee} ETB)`}
-                  </span>
-                </button>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {/* Anti-Poaching Notice & Report Broker CTA */}
           <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-stone-500 dark:text-stone-400 border-t border-stone-100 dark:border-stone-800">

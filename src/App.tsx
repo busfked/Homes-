@@ -50,6 +50,7 @@ import {
   creditPackageToUserPhone,
   creditSinglePropertyUnlockToUser
 } from './utils/storage';
+import { getTierForProperty, PRICE_TIERS } from './utils/pricing';
 import { translations } from './data/translations';
 import { Navbar } from './components/Navbar';
 import { WelcomeDashboard } from './components/WelcomeDashboard';
@@ -236,28 +237,44 @@ export default function App() {
     );
     updateRequestsState(updated);
 
-    // If request was a package purchase, add package with 5 credits to user's phone account
-    if (targetReq.type === 'package_purchase' || targetReq.packageTierId) {
-      const result = creditPackageToUserPhone(
-        targetReq.buyerPhone,
-        targetReq.packageTierId as any || 'tier_10k',
-        targetReq.remainingUnlocks || 5
-      );
-      if (result.updatedUser && currentUser && currentUser.phone === targetReq.buyerPhone) {
-        setCurrentUser(result.updatedUser);
-      }
-    } else if (targetReq.type === 'single_unlock' && targetReq.propertyId) {
-      // Single property unlock credit
-      const result = creditSinglePropertyUnlockToUser(targetReq.buyerPhone, targetReq.propertyId);
-      if (result.updatedUser && currentUser && currentUser.phone === targetReq.buyerPhone) {
-        setCurrentUser(result.updatedUser);
-      }
-    } else if (targetReq.type === 'owner_listing_fee' && targetReq.propertyId) {
+    // Process based on request type
+    if (targetReq.type === 'owner_listing_fee' && targetReq.propertyId) {
       // Activate pending owner property
       const updatedProps = properties.map((p) =>
         p.id === targetReq.propertyId ? { ...p, status: 'active' as const } : p
       );
       updatePropertiesState(updatedProps);
+    } else {
+      // User unlock request (5 homes in similar price range)
+      // 1. Directly unlock the requested property if present
+      if (targetReq.propertyId) {
+        creditSinglePropertyUnlockToUser(targetReq.buyerPhone, targetReq.propertyId);
+      }
+
+      // 2. Identify the pricing tier and max price for this range
+      const targetProp = properties.find((p) => p.id === targetReq.propertyId);
+      const tier = targetProp
+        ? getTierForProperty(targetProp.price, targetProp.listingType, targetProp.category)
+        : PRICE_TIERS.find((t) => t.id === targetReq.packageTierId) || PRICE_TIERS[0];
+
+      // 3. Grant the remaining 4 unlocks in this similar price tier
+      const remainingCredits = targetReq.propertyId ? 4 : (targetReq.remainingUnlocks || 5);
+      const result = creditPackageToUserPhone(
+        targetReq.buyerPhone,
+        (targetReq.packageTierId || tier.id) as any,
+        remainingCredits,
+        tier.maxPrice,
+        tier.nameEn
+      );
+
+      const cleanBuyerPhone = targetReq.buyerPhone.replace(/[\s-]/g, '');
+      if (
+        result.updatedUser &&
+        currentUser &&
+        currentUser.phone.replace(/[\s-]/g, '') === cleanBuyerPhone
+      ) {
+        setCurrentUser(result.updatedUser);
+      }
     }
 
     showToast(
