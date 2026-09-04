@@ -23,7 +23,8 @@ import {
   ShieldAlert,
   ChevronLeft,
   ChevronRight,
-  UserCheck
+  UserCheck,
+  Share2
 } from 'lucide-react';
 import { Property, Language, UserAccount } from '../types';
 import { translations } from '../data/translations';
@@ -42,6 +43,7 @@ interface HouseDetailModalProps {
   onOpenUnlockModal: (property: Property) => void;
   onOpenOwnerPortalForThisHouse: (property: Property) => void;
   onOpenReportModal?: (property: Property) => void;
+  onShare?: (property: Property) => void;
 }
 
 export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
@@ -55,6 +57,7 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
   onOpenUnlockModal,
   onOpenOwnerPortalForThisHouse,
   onOpenReportModal,
+  onShare,
 }) => {
   if (!isOpen || !property) return null;
 
@@ -123,12 +126,27 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
             </span>
           </div>
 
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-full bg-stone-200/80 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 flex items-center justify-center transition-colors cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {onShare && (
+              <button
+                type="button"
+                id="modal-share-btn"
+                onClick={() => onShare(property)}
+                className="px-3.5 py-1.5 rounded-full bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 flex items-center gap-1.5 text-xs font-black transition-all cursor-pointer border border-emerald-200 dark:border-emerald-800 shadow-2xs active:scale-95"
+                title={t.share || 'Share'}
+              >
+                <Share2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>{t.share || 'Share'}</span>
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="w-9 h-9 rounded-full bg-stone-200/80 dark:bg-stone-800 hover:bg-stone-300 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Modal Scrollable Body */}

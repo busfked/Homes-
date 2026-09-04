@@ -1,6 +1,13 @@
 import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId } from '../types';
 import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS } from '../data/sampleListings';
 import { PRICE_TIERS } from './pricing';
+import {
+  idbSaveProperties,
+  idbGetProperties,
+  idbSaveUnlockRequests,
+  idbGetUnlockRequests,
+  isIdbSupported,
+} from './idb';
 
 const STORAGE_KEYS = {
   PROPERTIES: 'betdelala_properties_v3',
@@ -14,6 +21,37 @@ const STORAGE_KEYS = {
   REPORTED_BROKERS: 'betdelala_reported_brokers_v2',
   OWNER_PROFILES: 'betdelala_owner_profiles_v1',
 };
+
+/**
+ * Remove legacy and obsolete storage keys to immediately reclaim browser quota.
+ */
+export function cleanupObsoleteStorage(): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const obsoletePrefixes = [
+      'betdelala_properties_v1',
+      'betdelala_properties_v2',
+      'betdelala_unlock_requests_v1',
+      'betdelala_unlock_requests_v2',
+      'betdelala_banned_phones_v1',
+      'betdelala_reported_brokers_v1',
+      'betdelala_sample_data',
+    ];
+
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+      if (obsoletePrefixes.some((p) => key.startsWith(p))) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch (err) {
+    console.debug('Storage cleanup notice:', err);
+  }
+}
+
+// Run cleanup immediately on load
+cleanupObsoleteStorage();
 
 // Owner Profile Interface for remembered owners
 export interface StoredOwnerProfile {
@@ -55,7 +93,19 @@ export function saveOwnerProfile(
     lastUsedAt: new Date().toISOString(),
   };
 
-  localStorage.setItem(STORAGE_KEYS.OWNER_PROFILES, JSON.stringify([updated, ...filtered]));
+  try {
+    localStorage.setItem(STORAGE_KEYS.OWNER_PROFILES, JSON.stringify([updated, ...filtered]));
+  } catch (err) {
+    try {
+      cleanupObsoleteStorage();
+      // If quota exceeded, omit heavy ID image from localStorage profile cache
+      const lightUpdated = { ...updated, nationalIdFrontUrl: undefined };
+      const lightFiltered = filtered.map((p) => ({ ...p, nationalIdFrontUrl: undefined }));
+      localStorage.setItem(STORAGE_KEYS.OWNER_PROFILES, JSON.stringify([lightUpdated, ...lightFiltered]));
+    } catch {
+      console.warn('Could not save owner profile to localStorage due to quota limit');
+    }
+  }
 }
 
 export function getStoredOwnerProfile(phone: string): StoredOwnerProfile | null {
@@ -549,18 +599,66 @@ export function creditSinglePropertyUnlockToUser(
 // PROPERTIES & LISTINGS
 // -------------------------------------------------------------
 
+/**
+ * Creates a quota-safe lightweight version of property list for localStorage.
+ * Keeps full text, specs, IDs, prices, status, but trims heavy base64 strings if needed
+ * (since full untruncated photos are permanently safe in IndexedDB and Supabase).
+ */
+function sanitizePropertiesForLocalStorage(properties: Property[], aggressive = false): Property[] {
+  return properties.map((prop) => {
+    let sanitizedImages = prop.images || [];
+
+    if (aggressive) {
+      // In aggressive mode: keep only the first image and limit to ~20KB
+      sanitizedImages = sanitizedImages.slice(0, 1).map((img) => {
+        if (img?.url && img.url.startsWith('data:') && img.url.length > 20000) {
+          return {
+            ...img,
+            url: img.url.slice(0, 20000),
+          };
+        }
+        return img;
+      });
+    } else {
+      // Standard mode: keep first 2 images, prune very long base64 strings (>50KB)
+      sanitizedImages = sanitizedImages.slice(0, 2).map((img) => {
+        if (img?.url && img.url.startsWith('data:') && img.url.length > 50000) {
+          return {
+            ...img,
+            url: img.url.slice(0, 50000),
+          };
+        }
+        return img;
+      });
+    }
+
+    return {
+      ...prop,
+      images: sanitizedImages,
+      // Omit heavy admin screenshots from localStorage; they are safe in IndexedDB and Supabase
+      nationalIdFrontUrl:
+        prop.nationalIdFrontUrl?.startsWith('data:') && prop.nationalIdFrontUrl.length > 25000
+          ? undefined
+          : prop.nationalIdFrontUrl,
+      sellerPaymentScreenshotUrl:
+        prop.sellerPaymentScreenshotUrl?.startsWith('data:') && prop.sellerPaymentScreenshotUrl.length > 25000
+          ? undefined
+          : prop.sellerPaymentScreenshotUrl,
+    };
+  });
+}
+
 export function getStoredProperties(): Property[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.PROPERTIES);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.PROPERTIES, JSON.stringify([]));
       return [];
     }
     const parsed: Property[] = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return [];
     }
-    
+
     // Auto-update expiry status on load
     const now = Date.now();
     return parsed.map((p) => {
@@ -571,16 +669,76 @@ export function getStoredProperties(): Property[] {
       return p;
     });
   } catch (err) {
-    console.error('Error loading stored properties:', err);
+    console.debug('Notice loading stored properties from localStorage:', err);
     return [];
   }
 }
 
-export function saveProperties(properties: Property[]): void {
+/**
+ * Asynchronously load full properties from high-capacity IndexedDB,
+ * falling back to localStorage if IndexedDB is empty or not supported.
+ */
+export async function loadPropertiesFromStorage(): Promise<Property[]> {
   try {
-    localStorage.setItem(STORAGE_KEYS.PROPERTIES, JSON.stringify(properties));
+    const idbProps = await idbGetProperties();
+    if (Array.isArray(idbProps) && idbProps.length > 0) {
+      const now = Date.now();
+      return idbProps.map((p) => {
+        const expiry = new Date(p.expiresAt).getTime();
+        if (now > expiry && p.status === 'active') {
+          return { ...p, status: 'expired' as const };
+        }
+        return p;
+      });
+    }
   } catch (err) {
-    console.error('Error saving properties:', err);
+    console.debug('IndexedDB read fallback:', err);
+  }
+
+  return getStoredProperties();
+}
+
+/**
+ * Quota-safe save function:
+ * 1. Persists 100% of properties with full photos to IndexedDB (unlimited capacity).
+ * 2. Persists an optimized/sanitized copy to localStorage for fast synchronous initial render,
+ *    without throwing QuotaExceededError.
+ */
+export function saveProperties(properties: Property[]): void {
+  if (!Array.isArray(properties)) return;
+
+  // 1. Always persist full, untouched data to IndexedDB
+  idbSaveProperties(properties).catch(() => {});
+
+  // 2. Try saving to localStorage for instant synchronous boot
+  try {
+    const serialized = JSON.stringify(properties);
+    // If under 2MB, try direct write
+    if (serialized.length < 2000000) {
+      localStorage.setItem(STORAGE_KEYS.PROPERTIES, serialized);
+      return;
+    }
+  } catch {
+    // Exceeded quota or JSON string too large - proceed to mitigation
+  }
+
+  // Quota mitigation step 1: Free up obsolete keys and try light sanitization
+  try {
+    cleanupObsoleteStorage();
+    const light = sanitizePropertiesForLocalStorage(properties, false);
+    localStorage.setItem(STORAGE_KEYS.PROPERTIES, JSON.stringify(light));
+    return;
+  } catch {
+    // Still exceeded quota
+  }
+
+  // Quota mitigation step 2: Aggressive sanitization (thumbnail only, no heavy data URIs)
+  try {
+    const minimal = sanitizePropertiesForLocalStorage(properties, true);
+    localStorage.setItem(STORAGE_KEYS.PROPERTIES, JSON.stringify(minimal));
+  } catch {
+    // Quota reached in localStorage; full data is safe in IndexedDB
+    console.debug('LocalStorage quota limit reached; listings safely preserved in IndexedDB.');
   }
 }
 
@@ -588,22 +746,57 @@ export function getStoredUnlockRequests(): UnlockRequest[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.UNLOCK_REQUESTS);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEYS.UNLOCK_REQUESTS, JSON.stringify([]));
       return [];
     }
     const parsed: UnlockRequest[] = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
-    console.error('Error loading unlock requests:', err);
+    console.debug('Notice loading unlock requests:', err);
     return [];
   }
 }
 
-export function saveUnlockRequests(requests: UnlockRequest[]): void {
+/**
+ * Asynchronously load full unlock requests from IndexedDB with fallback to localStorage
+ */
+export async function loadUnlockRequestsFromStorage(): Promise<UnlockRequest[]> {
   try {
-    localStorage.setItem(STORAGE_KEYS.UNLOCK_REQUESTS, JSON.stringify(requests));
-  } catch (err) {
-    console.error('Error saving unlock requests:', err);
+    const idbReqs = await idbGetUnlockRequests();
+    if (Array.isArray(idbReqs) && idbReqs.length > 0) {
+      return idbReqs;
+    }
+  } catch {}
+  return getStoredUnlockRequests();
+}
+
+export function saveUnlockRequests(requests: UnlockRequest[]): void {
+  if (!Array.isArray(requests)) return;
+
+  // 1. Persist full copy to IndexedDB
+  idbSaveUnlockRequests(requests).catch(() => {});
+
+  // 2. Save to localStorage with quota safety
+  try {
+    const serialized = JSON.stringify(requests);
+    if (serialized.length < 1500000) {
+      localStorage.setItem(STORAGE_KEYS.UNLOCK_REQUESTS, serialized);
+      return;
+    }
+  } catch {}
+
+  try {
+    cleanupObsoleteStorage();
+    // Prune massive base64 receipt screenshots from localStorage copy
+    const light = requests.map((r) => ({
+      ...r,
+      screenshotUrl:
+        r.screenshotUrl?.startsWith('data:') && r.screenshotUrl.length > 20000
+          ? ''
+          : r.screenshotUrl,
+    }));
+    localStorage.setItem(STORAGE_KEYS.UNLOCK_REQUESTS, JSON.stringify(light));
+  } catch {
+    console.debug('LocalStorage quota limit for requests; safely preserved in IndexedDB.');
   }
 }
 

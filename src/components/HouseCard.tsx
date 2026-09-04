@@ -17,7 +17,8 @@ import {
   Fuel,
   Gauge,
   Calendar,
-  Layers
+  Layers,
+  Share2
 } from 'lucide-react';
 import { Property, Language } from '../types';
 import { translations } from '../data/translations';
@@ -32,6 +33,7 @@ interface HouseCardProps {
   onOpenDetails: (property: Property) => void;
   onOpenUnlockModal: (property: Property) => void;
   onOpenOwnerManageForProperty?: (property: Property) => void;
+  onShare?: (property: Property) => void;
 }
 
 export const HouseCard: React.FC<HouseCardProps> = ({
@@ -40,6 +42,7 @@ export const HouseCard: React.FC<HouseCardProps> = ({
   isUnlocked,
   onOpenDetails,
   onOpenUnlockModal,
+  onShare,
 }) => {
   const t = translations[currentLang];
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -153,12 +156,27 @@ export const HouseCard: React.FC<HouseCardProps> = ({
           )}
         </div>
 
-        {/* Compression / Photo Count Badge */}
-        <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
+        {/* Compression / Photo Count Badge & Quick Share */}
+        <div className="absolute top-3 right-3 z-10 flex items-center gap-1.5">
           <span className="px-2 py-0.8 rounded-md bg-stone-900/80 text-white text-[11px] font-semibold backdrop-blur-xs flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-emerald-400" />
             <span>{images.length} {t.photosCount} • {totalCompressedSizeKb} KB</span>
           </span>
+          {onShare && (
+            <button
+              type="button"
+              id={`share-btn-top-${property.id}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onShare(property);
+              }}
+              title={t.share || 'Share'}
+              aria-label={t.share || 'Share'}
+              className="p-1.5 rounded-md bg-stone-900/80 hover:bg-emerald-600 active:scale-95 text-white backdrop-blur-xs transition-colors cursor-pointer shadow-xs flex items-center justify-center"
+            >
+              <Share2 className="w-3.5 h-3.5 text-emerald-300" />
+            </button>
+          )}
         </div>
 
         {/* Photo Navigation Arrows if multiple photos */}
@@ -328,33 +346,53 @@ export const HouseCard: React.FC<HouseCardProps> = ({
             </div>
           </div>
 
-          {/* Action CTA Button with dynamic 100/500 fee */}
-          {isUnlocked ? (
-            <div className="w-full py-2.5 px-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 shadow-2xs">
-              <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-              <span>{t.ownerContactUnlocked}</span>
+          {/* Action CTA Button with dynamic fee & Social Share */}
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              {isUnlocked ? (
+                <div className="w-full py-2.5 px-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 shadow-2xs">
+                  <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>{t.ownerContactUnlocked}</span>
+                </div>
+              ) : property.status === 'occupied' ? (
+                <div className="w-full py-2.5 px-3 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-500 dark:text-stone-400 text-xs font-bold flex items-center justify-center gap-1.5">
+                  <span>{t.occupiedStatus}</span>
+                </div>
+              ) : (
+                <button
+                  id={`unlock-btn-${property.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenUnlockModal(property);
+                  }}
+                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>
+                    {property.listingType === 'sale'
+                      ? t.unlockSaleContactBtn
+                      : t.unlockRentContactBtn}
+                  </span>
+                </button>
+              )}
             </div>
-          ) : property.status === 'occupied' ? (
-            <div className="w-full py-2.5 px-3 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-500 dark:text-stone-400 text-xs font-bold flex items-center justify-center gap-1.5">
-              <span>{t.occupiedStatus}</span>
-            </div>
-          ) : (
-            <button
-              id={`unlock-btn-${property.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenUnlockModal(property);
-              }}
-              className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-extrabold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
-            >
-              <Lock className="w-3.5 h-3.5 text-emerald-200" />
-              <span>
-                {property.listingType === 'sale'
-                  ? t.unlockSaleContactBtn
-                  : t.unlockRentContactBtn}
-              </span>
-            </button>
-          )}
+
+            {onShare && (
+              <button
+                type="button"
+                id={`share-btn-bottom-${property.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onShare(property);
+                }}
+                className="p-2.5 bg-stone-100 hover:bg-emerald-50 dark:bg-stone-800 dark:hover:bg-emerald-950/60 text-stone-700 dark:text-stone-300 hover:text-emerald-700 dark:hover:text-emerald-300 rounded-xl border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-2xs"
+                title={t.share || 'Share'}
+                aria-label={t.share || 'Share'}
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

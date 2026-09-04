@@ -7,9 +7,9 @@ import { CompressionResult } from '../types';
  */
 export async function compressImage(
   file: File,
-  maxWidth = 1200,
-  maxHeight = 900,
-  quality = 0.72
+  maxWidth = 960,
+  maxHeight = 720,
+  quality = 0.65
 ): Promise<CompressionResult> {
   const originalSizeKb = Math.round(file.size / 1024);
 

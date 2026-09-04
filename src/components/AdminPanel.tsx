@@ -25,11 +25,14 @@ import {
   Phone,
   Users,
   UserCheck,
-  Plus
+  Plus,
+  LogOut,
+  ZoomIn
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Property, UnlockRequest, PaymentSettings, Language, ReportedBroker, UserAccount } from '../types';
 import { translations } from '../data/translations';
+import { ErrorBoundary } from './ErrorBoundary';
 import { 
   SUPABASE_SQL_SCHEMA, 
   cleanupExpiredListings, 
@@ -64,6 +67,9 @@ interface AdminPanelProps {
   onAutoCleanExpired: () => void;
   onDeleteProperty: (propertyId: string) => void;
   onMarkOccupied: (propertyId: string) => void;
+  onTogglePropertyStatus?: (propertyId: string, targetStatus: 'active' | 'occupied') => void;
+  onDeleteRequest?: (requestId: string) => void;
+  onWipeAllTestData?: () => Promise<void>;
   onBanPhone?: (phone: string) => void;
   onUnbanPhone?: (phone: string) => void;
   onResolveReport?: (reportId: string, action: 'ban' | 'dismiss') => void;
@@ -86,6 +92,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onAutoCleanExpired,
   onDeleteProperty,
   onMarkOccupied,
+  onTogglePropertyStatus,
+  onDeleteRequest,
+  onWipeAllTestData,
   onBanPhone,
   onUnbanPhone,
   onResolveReport,
@@ -108,6 +117,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [registeredUsers, setRegisteredUsers] = useState<UserAccount[]>([]);
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [spaceNotice, setSpaceNotice] = useState<string | null>(null);
+
+  // Deletion and wipe state
+  const [deleteConfirmUserPhone, setDeleteConfirmUserPhone] = useState<string | null>(null);
+  const [deleteConfirmRequestId, setDeleteConfirmRequestId] = useState<string | null>(null);
+  const [deleteConfirmPropertyId, setDeleteConfirmPropertyId] = useState<string | null>(null);
+  const [showWipeDataModal, setShowWipeDataModal] = useState(false);
+  const [isWipingData, setIsWipingData] = useState(false);
+  const [wipeDataSuccessMsg, setWipeDataSuccessMsg] = useState('');
+
+  // Owner ID verification modal state
+  const [viewingOwnerId, setViewingOwnerId] = useState<{
+    idUrl: string;
+    ownerName: string;
+    ownerPhone: string;
+    title: string;
+  } | null>(null);
 
   // Manual ban input
   const [manualBanPhone, setManualBanPhone] = useState('');
@@ -141,21 +166,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   }, [isAdminLoggedIn, activeAdminTab]);
 
   const handleDeleteUser = (userIdOrPhone: string, userName: string) => {
-    if (
-      window.confirm(
-        currentLang === 'am'
-          ? `እርግጠኛ ነዎት ተጠቃሚ "${userName}"ን ከዳታቤዝ በቋሚነት ማጥፋት ይፈልጋሉ? ይህ የ Supabase ማከማቻ ቦታን ይቆጥባል።`
-          : `Are you sure you want to permanently delete user "${userName}" to save Supabase database space?`
-      )
-    ) {
+    if (deleteConfirmUserPhone === userIdOrPhone) {
       deleteUserAccount(userIdOrPhone);
       refreshUserList();
+      setDeleteConfirmUserPhone(null);
       setSpaceNotice(
         currentLang === 'am'
           ? `✓ ተጠቃሚ "${userName}" ተሰርዟል። የማከማቻ ቦታ ተቆጥቧል!`
           : `✓ User "${userName}" deleted. Database storage space saved!`
       );
       setTimeout(() => setSpaceNotice(null), 4000);
+    } else {
+      setDeleteConfirmUserPhone(userIdOrPhone);
+      setTimeout(() => setDeleteConfirmUserPhone(null), 6000);
+    }
+  };
+
+  const handleExecuteWipeData = async () => {
+    setIsWipingData(true);
+    try {
+      if (onWipeAllTestData) {
+        await onWipeAllTestData();
+      }
+      refreshUserList();
+      setIsWipingData(false);
+      setShowWipeDataModal(false);
+      setWipeDataSuccessMsg(
+        currentLang === 'am'
+          ? '✓ ሁሉም የሙከራ ዳታዎች (ቤቶች፣ ተጠቃሚዎችና ክፍያዎች) በሙሉ ተሰርዘዋል! ለአዲሱ ፕሮሞ ዝግጁ ነው።'
+          : '✓ All test data (listings, users, payments) wiped clean! Ready for promo launch.'
+      );
+      setTimeout(() => setWipeDataSuccessMsg(''), 8000);
+    } catch (err) {
+      console.warn('Wipe data failed:', err);
+      setIsWipingData(false);
     }
   };
 
@@ -430,9 +474,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {isAdminLoggedIn && (
               <button
                 onClick={() => setIsAdminLoggedIn(false)}
-                className="px-3 py-1.5 rounded-lg bg-stone-850 hover:bg-stone-800 text-stone-300 text-xs font-semibold cursor-pointer"
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                title={t.logoutAdmin}
               >
-                {t.logoutAdmin}
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{currentLang === 'am' ? 'ውጣ (Logout)' : 'Log Out'}</span>
               </button>
             )}
             <button
@@ -733,7 +779,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <strong>Listing:</strong> {req.propertyTitle} ({req.propertyArea})
                                   </span>
                                   <span>
-                                    <strong>Bank:</strong> {req.paymentMethod.toUpperCase()}
+                                    <strong>Bank:</strong> {(req.paymentMethod || 'TELEBIRR').toUpperCase()}
                                   </span>
                                   <span>
                                     <strong>Ref:</strong> {req.transactionRef || 'N/A'}
@@ -744,8 +790,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
 
                                 {targetProp && (
-                                  <div className="text-[11px] text-stone-500 dark:text-stone-400 bg-white/70 dark:bg-stone-800 p-2 rounded-lg border border-stone-200 dark:border-stone-700 inline-block">
-                                    <span>Owner: {targetProp.ownerName} • Phone: {targetProp.ownerPhone}</span>
+                                  <div className="text-[11px] text-stone-500 dark:text-stone-400 bg-white/70 dark:bg-stone-800 p-2 rounded-lg border border-stone-200 dark:border-stone-700 flex flex-wrap items-center gap-2">
+                                    <span>Owner: <strong>{targetProp.ownerName}</strong> • Phone: <strong>{targetProp.ownerPhone}</strong> (PIN: {targetProp.ownerPin})</span>
+                                    {targetProp.nationalIdFrontUrl && (
+                                      <button
+                                        onClick={() => setViewingOwnerId({
+                                          idUrl: targetProp.nationalIdFrontUrl!,
+                                          ownerName: targetProp.ownerName,
+                                          ownerPhone: targetProp.ownerPhone,
+                                          title: targetProp.title
+                                        })}
+                                        className="py-0.5 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                      >
+                                        <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                                        <span>{currentLang === 'am' ? 'የባለቤት መታወቂያ መርምር' : 'Verify Owner ID'}</span>
+                                      </button>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -790,7 +850,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </button>
                                   </div>
                                 ) : (
-                                  <div className="flex flex-col items-end gap-1 text-xs font-bold text-stone-500 dark:text-stone-400">
+                                  <div className="flex flex-col items-end gap-1.5 text-xs font-bold text-stone-500 dark:text-stone-400">
                                     {req.status === 'approved' ? (
                                       <span className="text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
                                         <CheckCircle2 className="w-4 h-4" /> Approved
@@ -799,17 +859,51 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                       <span className="text-rose-600 dark:text-rose-400">Rejected</span>
                                     )}
 
-                                    {/* Delete User to Free Space after approval */}
-                                    {req.type !== 'owner_listing_fee' && (
-                                      <button
-                                        onClick={() => handleDeleteUser(req.buyerPhone, req.buyerName)}
-                                        className="py-1 px-2 bg-stone-100 dark:bg-stone-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-stone-600 hover:text-rose-600 dark:text-stone-400 dark:hover:text-rose-300 border border-stone-200 dark:border-stone-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
-                                        title="Delete this user from database to save space on Supabase"
-                                      >
-                                        <Trash2 className="w-3 h-3 text-rose-500" />
-                                        <span>{currentLang === 'am' ? 'ቦታ ቆጥብ (ተጠቃሚውን አጥፋ)' : 'Delete user (free space)'}</span>
-                                      </button>
-                                    )}
+                                    <div className="flex items-center gap-1.5">
+                                      {/* Delete User to Free Space after approval */}
+                                      {req.type !== 'owner_listing_fee' && (
+                                        <button
+                                          onClick={() => handleDeleteUser(req.buyerPhone, req.buyerName)}
+                                          className="py-1 px-2 bg-stone-100 dark:bg-stone-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-stone-600 hover:text-rose-600 dark:text-stone-400 dark:hover:text-rose-300 border border-stone-200 dark:border-stone-700 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                                          title="Delete this user from database to save space on Supabase"
+                                        >
+                                          <Trash2 className="w-3 h-3 text-rose-500" />
+                                          <span>
+                                            {deleteConfirmUserPhone === req.buyerPhone
+                                              ? (currentLang === 'am' ? 'እርግጠኛ ነዎት?' : 'Confirm?')
+                                              : (currentLang === 'am' ? 'ተጠቃሚ አጥፋ' : 'Delete user')}
+                                          </span>
+                                        </button>
+                                      )}
+
+                                      {/* Delete Request record */}
+                                      {onDeleteRequest && (
+                                        <button
+                                          onClick={() => {
+                                            if (deleteConfirmRequestId === req.id) {
+                                              onDeleteRequest(req.id);
+                                              setDeleteConfirmRequestId(null);
+                                            } else {
+                                              setDeleteConfirmRequestId(req.id);
+                                              setTimeout(() => setDeleteConfirmRequestId(null), 5000);
+                                            }
+                                          }}
+                                          className={`py-1 px-2 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                                            deleteConfirmRequestId === req.id
+                                              ? 'bg-rose-600 text-white'
+                                              : 'bg-stone-100 dark:bg-stone-800 hover:bg-rose-50 text-stone-500 hover:text-rose-600 border border-stone-200 dark:border-stone-700'
+                                          }`}
+                                          title="Delete this payment request record"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                          <span>
+                                            {deleteConfirmRequestId === req.id
+                                              ? (currentLang === 'am' ? 'ይጥፋ?' : 'Confirm?')
+                                              : (currentLang === 'am' ? 'ጥያቄውን ሰርዝ' : 'Delete Req')}
+                                          </span>
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                 )}
                               </div>
@@ -939,11 +1033,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="flex items-center gap-2 shrink-0">
                                   <button
                                     onClick={() => handleDeleteUser(u.id || u.phone, u.name)}
-                                    className="py-2 px-3 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                                    className={`py-2 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                                      deleteConfirmUserPhone === (u.id || u.phone)
+                                        ? 'bg-rose-600 text-white animate-pulse'
+                                        : 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                    }`}
                                     title="Permanently delete user to free Supabase storage space"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                    <span>{currentLang === 'am' ? 'ተጠቃሚውን ሰርዝ (ቦታ ቆጥብ)' : 'Delete User (Save Space)'}</span>
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <span>
+                                      {deleteConfirmUserPhone === (u.id || u.phone)
+                                        ? (currentLang === 'am' ? 'እርግጠኛ ነዎት? ለማጥፋት ይጫኑ' : 'Confirm Delete?')
+                                        : (currentLang === 'am' ? 'ተጠቃሚውን ሰርዝ (ቦታ ቆጥብ)' : 'Delete User (Save Space)')}
+                                    </span>
                                   </button>
                                 </div>
                               </div>
@@ -952,6 +1054,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         })}
                     </div>
                   )}
+
+                  {/* PROMO LAUNCH: WIPE ALL TEST DATA SECTION */}
+                  <div className="p-4 sm:p-5 bg-gradient-to-r from-rose-50 to-amber-50 dark:from-rose-950/40 dark:to-amber-950/30 border-2 border-rose-300 dark:border-rose-800 rounded-3xl space-y-3 mt-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🚀</span>
+                          <h4 className="font-black text-rose-950 dark:text-rose-200 text-sm sm:text-base">
+                            {currentLang === 'am' ? 'የማስተዋወቂያ ዝግጅት፦ ሁሉንም የሙከራ ዳታዎች አጽዳ (Promo Clean)' : 'Promo Launch: Wipe All Test Data'}
+                          </h4>
+                        </div>
+                        <p className="text-xs text-rose-900/80 dark:text-rose-300 max-w-xl">
+                          {currentLang === 'am'
+                            ? 'ስራ ከመጀመርዎ በፊት በሙከራ ጊዜ የተመዘገቡ ቤቶችን፣ የክፍያ ስክሪንሽቶችን እና ተጠቃሚዎችን ከዳታቤዝ እና ከስልክዎ ሙሉ በሙሉ ለማጥፋት ይጠቀሙበት። ዳታቤዙ አዲስ እና ንጹህ ይሆናል።'
+                            : 'Before launching your marketing campaign to millions, wipe all test properties, fake receipts, and test user accounts from Supabase and local storage so your database is 100% fresh and clean.'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowWipeDataModal(true)}
+                        className="py-3 px-5 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-2xl text-xs font-black flex items-center gap-2 shadow-md cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>{currentLang === 'am' ? 'ሁሉንም የሙከራ ዳታዎች አጽዳ' : 'Wipe All Test Data'}</span>
+                      </button>
+                    </div>
+
+                    {wipeDataSuccessMsg && (
+                      <div className="p-3 bg-emerald-100 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-700 rounded-xl text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>{wipeDataSuccessMsg}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1032,32 +1169,92 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                                   {prop.status}
                                 </span>
                               </div>
-                              <div className="text-xs text-stone-500 dark:text-stone-400 flex items-center gap-2 mt-0.5">
+                              <div className="text-xs text-stone-500 dark:text-stone-400 flex flex-wrap items-center gap-2 mt-0.5">
                                 <span className="text-emerald-600 dark:text-emerald-400 font-bold">{prop.area}</span>
                                 <span>•</span>
-                                <span>Owner: {prop.ownerPhone} (PIN: {prop.ownerPin})</span>
+                                <span>Owner: <strong>{prop.ownerName || 'Owner'}</strong> ({prop.ownerPhone}) • PIN: <code className="font-mono bg-stone-100 dark:bg-stone-800 px-1 rounded">{prop.ownerPin}</code></span>
+                                {prop.nationalIdFrontUrl && (
+                                  <button
+                                    onClick={() => setViewingOwnerId({
+                                      idUrl: prop.nationalIdFrontUrl!,
+                                      ownerName: prop.ownerName || 'Owner',
+                                      ownerPhone: prop.ownerPhone,
+                                      title: prop.title
+                                    })}
+                                    className="py-0.5 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                                    <span>{currentLang === 'am' ? 'የባለቤት መታወቂያ ፈትሽ' : 'Verify ID'}</span>
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                            <span className="text-xs text-stone-500 dark:text-stone-400 font-medium mr-2">
-                              {isExpired ? 'Expired' : `${days}d ${hours}h left`}
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
+                            <span className="text-xs text-stone-500 dark:text-stone-400 font-medium mr-1">
+                              {isExpired ? (
+                                <span className="text-rose-600 font-bold">Expired</span>
+                              ) : (
+                                `${days}d ${hours}h left`
+                              )}
                             </span>
 
-                            <button
-                              onClick={() => onMarkOccupied(prop.id)}
-                              className="px-2.5 py-1.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 rounded-lg text-xs font-bold cursor-pointer"
-                            >
-                              {prop.status === 'occupied' ? 'Occupied' : 'Set Occupied'}
-                            </button>
+                            {/* Smart Available / Rented Toggle */}
+                            {prop.status === 'occupied' ? (
+                              <button
+                                onClick={() => {
+                                  if (onTogglePropertyStatus) {
+                                    onTogglePropertyStatus(prop.id, 'active');
+                                  } else {
+                                    onMarkOccupied(prop.id);
+                                  }
+                                }}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                                title="Make this listing live and visible on front page immediately"
+                              >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                <span>{currentLang === 'am' ? 'ወደ ገበያ መልስ (Available)' : 'Make Available'}</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  if (onTogglePropertyStatus) {
+                                    onTogglePropertyStatus(prop.id, 'occupied');
+                                  } else {
+                                    onMarkOccupied(prop.id);
+                                  }
+                                }}
+                                className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 dark:bg-stone-700 dark:hover:bg-stone-600 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                                title="Mark listing as rented or closed"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>{currentLang === 'am' ? 'ተከራይቷል (Mark Rented)' : 'Mark Rented'}</span>
+                              </button>
+                            )}
 
+                            {/* Safe Delete with inline confirm state */}
                             <button
-                              onClick={() => onDeleteProperty(prop.id)}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg cursor-pointer"
-                              title="Delete"
+                              onClick={() => {
+                                if (deleteConfirmPropertyId === prop.id) {
+                                  onDeleteProperty(prop.id);
+                                  setDeleteConfirmPropertyId(null);
+                                } else {
+                                  setDeleteConfirmPropertyId(prop.id);
+                                  setTimeout(() => setDeleteConfirmPropertyId(null), 5000);
+                                }
+                              }}
+                              className={`p-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                                deleteConfirmPropertyId === prop.id
+                                  ? 'bg-rose-600 text-white px-2.5 animate-pulse'
+                                  : 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                              }`}
+                              title="Delete property"
                             >
                               <Trash2 className="w-4 h-4" />
+                              {deleteConfirmPropertyId === prop.id && (
+                                <span>{currentLang === 'am' ? 'ይጥፋ?' : 'Confirm?'}</span>
+                              )}
                             </button>
                           </div>
                         </div>
@@ -1719,6 +1916,124 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
             <div className="aspect-3/4 max-h-[70vh] bg-stone-950 rounded-xl overflow-hidden flex items-center justify-center">
               <img src={viewingScreenshot} alt="Receipt Full" className="w-full h-full object-contain" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Owner National ID Card Modal Preview */}
+      {viewingOwnerId && (
+        <div
+          onClick={() => setViewingOwnerId(null)}
+          className="fixed inset-0 z-70 bg-black/90 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-stone-900 rounded-3xl overflow-hidden max-w-2xl w-full p-5 space-y-4 border border-stone-200 dark:border-stone-800 shadow-2xl"
+          >
+            <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-sm">
+                    {currentLang === 'am' ? 'የባለቤት መታወቂያ ማረጋገጫ' : 'Owner National ID Verification'}
+                  </h4>
+                  <p className="text-xs text-stone-500">
+                    {viewingOwnerId.ownerName} • 📞 {viewingOwnerId.ownerPhone} • {viewingOwnerId.title}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewingOwnerId(null)}
+                className="w-8 h-8 rounded-full bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-700 dark:text-stone-300 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-stone-950 rounded-2xl overflow-hidden flex items-center justify-center min-h-[260px] max-h-[60vh] p-2 border border-stone-800">
+              <img
+                src={viewingOwnerId.idUrl}
+                alt="Owner National ID"
+                className="w-full h-full object-contain rounded-xl max-h-[55vh]"
+              />
+            </div>
+
+            <div className="p-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-xl text-xs text-indigo-900 dark:text-indigo-200 flex items-center justify-between gap-2 flex-wrap">
+              <span>
+                {currentLang === 'am'
+                  ? '💡 መታወቂያው ኦሪጅናል መሆኑን፣ ስሙ እና ፎቶው ትክክል መሆናቸውን ይመርምሩ።'
+                  : '💡 Verify the Kebele or National ID card photo matches the owner details before activating.'}
+              </span>
+              <a
+                href={viewingOwnerId.idUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold shrink-0 flex items-center gap-1"
+              >
+                <ZoomIn className="w-3.5 h-3.5" />
+                <span>{currentLang === 'am' ? 'በትልቅ እይ' : 'Full Size'}</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Wipe All Test Data Confirmation Modal */}
+      {showWipeDataModal && (
+        <div
+          onClick={() => !isWipingData && setShowWipeDataModal(false)}
+          className="fixed inset-0 z-70 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-stone-900 rounded-3xl overflow-hidden max-w-md w-full p-6 space-y-4 border border-rose-200 dark:border-rose-900 shadow-2xl"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-base">
+                {currentLang === 'am' ? 'ሁሉንም የሙከራ ዳታዎች ማጥፋት ይፈልጋሉ?' : 'Wipe All Test Data from Supabase?'}
+              </h4>
+              <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                {currentLang === 'am'
+                  ? 'ይህ እርምጃ የተመዘገቡ የሙከራ ቤቶችን፣ የክፍያ ጥያቄዎችን እና ተጠቃሚዎችን ከ Supabase እና ከዚህ መተግበሪያ ላይ ሙሉ በሙሉ ያጸዳል። የማስተዋወቂያ ዘመቻዎን በአዲስና ንጹህ ዳታቤዝ ለመጀመር ይረዳዎታል።'
+                  : 'This will completely delete all test property listings, payment requests, unlocked records, and user accounts from your Supabase database. Your system will be 100% clean for your official promo launch.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowWipeDataModal(false)}
+                disabled={isWipingData}
+                className="flex-1 py-3 px-4 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                {currentLang === 'am' ? 'ይቅር (Cancel)' : 'Cancel'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteWipeData}
+                disabled={isWipingData}
+                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isWipingData ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>{currentLang === 'am' ? 'በማጽዳት ላይ...' : 'Wiping...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>{currentLang === 'am' ? 'አዎ፣ ሙሉ በሙሉ አጽዳ' : 'Yes, Wipe Clean'}</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

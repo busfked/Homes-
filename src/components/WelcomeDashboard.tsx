@@ -19,7 +19,8 @@ import {
   KeyRound,
   Headphones,
   User,
-  PackageCheck
+  PackageCheck,
+  Share2
 } from 'lucide-react';
 import { Language, CategoryType, PropertyType, ListingType, UserAccount } from '../types';
 import { ADDIS_AREAS, PROPERTY_TYPES } from '../data/addisAreas';
@@ -50,6 +51,7 @@ interface WelcomeDashboardProps {
   currentUser?: UserAccount | null;
   onOpenUserAuthModal?: () => void;
   onViewRequestsClick?: () => void;
+  onShareSearch?: () => void;
 }
 
 export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
@@ -77,6 +79,7 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
   currentUser,
   onOpenUserAuthModal,
   onViewRequestsClick,
+  onShareSearch,
 }) => {
   const t = translations[currentLang];
 
@@ -561,20 +564,34 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
                 )}
               </div>
 
-              {(selectedArea !== 'all' ||
-                selectedType !== 'all' ||
-                selectedListingType !== 'all' ||
-                selectedBedrooms !== 'all' ||
-                maxPrice > 0 ||
-                searchQuery ||
-                !onlyAvailable) && (
-                <button
-                  onClick={onResetFilters}
-                  className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
-                >
-                  <span>{t.clearFilters}</span>
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {onShareSearch && (
+                  <button
+                    type="button"
+                    onClick={onShareSearch}
+                    className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/70 dark:hover:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300 rounded-lg text-xs font-black transition-all cursor-pointer flex items-center gap-1.5 border border-emerald-300/40 dark:border-emerald-800 shadow-2xs active:scale-95"
+                    title={t.shareSearch || 'Share Search'}
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>{currentLang === 'am' ? 'ፍለጋውን አጋራ' : 'Share Search'}</span>
+                  </button>
+                )}
+
+                {(selectedArea !== 'all' ||
+                  selectedType !== 'all' ||
+                  selectedListingType !== 'all' ||
+                  selectedBedrooms !== 'all' ||
+                  maxPrice > 0 ||
+                  searchQuery ||
+                  !onlyAvailable) && (
+                  <button
+                    onClick={onResetFilters}
+                    className="px-3 py-1.5 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <span>{t.clearFilters}</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

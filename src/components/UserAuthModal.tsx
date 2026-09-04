@@ -21,17 +21,20 @@ import {
 import { UserAccount, Language, Property, UnlockRequest } from '../types';
 import { translations } from '../data/translations';
 import { loginUserAccount, registerUserAccount, isPhoneBanned } from '../utils/storage';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface UserAuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentLang: Language;
   currentUser: UserAccount | null;
-  allProperties: Property[];
+  allProperties?: Property[];
+  unlockedProperties?: Property[];
   unlockRequests?: UnlockRequest[];
   onLoginSuccess: (user: UserAccount) => void;
   onLogout: () => void;
-  onSelectProperty: (property: Property) => void;
+  onSelectProperty?: (property: Property) => void;
+  onOpenPropertyDetails?: (property: Property) => void;
   onOpenBuyPackageModal?: () => void;
 }
 
@@ -40,17 +43,20 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
   onClose,
   currentLang,
   currentUser,
-  allProperties,
+  allProperties = [],
+  unlockedProperties = [],
   unlockRequests = [],
   onLoginSuccess,
   onLogout,
   onSelectProperty,
+  onOpenPropertyDetails,
   onOpenBuyPackageModal,
 }) => {
   if (!isOpen) return null;
 
   const t = translations[currentLang];
   const [authMode, setAuthMode] = useState<'login' | 'register'>('register');
+  const [showAuthFormEvenIfLoggedIn, setShowAuthFormEvenIfLoggedIn] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
@@ -120,16 +126,25 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
     }
   };
 
-  // Find user's unlocked properties
+  // Find user's unlocked properties safely
   const cleanUserPhone = currentUser?.phone?.replace(/[\s-]/g, '') || '';
-  const unlockedProperties = currentUser?.unlockedPropertyIds
-    ? allProperties.filter((p) => currentUser.unlockedPropertyIds.includes(p.id))
-    : [];
+  const resolvedUnlockedProperties: Property[] = React.useMemo(() => {
+    if (unlockedProperties && unlockedProperties.length > 0) {
+      return unlockedProperties;
+    }
+    const propList = allProperties || [];
+    const unlockedIds = currentUser?.unlockedPropertyIds || [];
+    if (unlockedIds.length === 0) return [];
+    return propList.filter((p) => p && unlockedIds.includes(p.id));
+  }, [unlockedProperties, allProperties, currentUser?.unlockedPropertyIds]);
 
   // Find user's deposit & unlock payment approvals
-  const userRequests = unlockRequests.filter(
-    (req) => req.buyerPhone && req.buyerPhone.replace(/[\s-]/g, '') === cleanUserPhone
-  );
+  const userRequests = React.useMemo(() => {
+    if (!cleanUserPhone) return [];
+    return (unlockRequests || []).filter(
+      (req) => req && req.buyerPhone && req.buyerPhone.replace(/[\s-]/g, '') === cleanUserPhone
+    );
+  }, [unlockRequests, cleanUserPhone]);
 
   // Total remaining unlocks
   const totalRemainingUnlocks = (currentUser?.packages || []).reduce(
@@ -177,21 +192,26 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
 
         {/* Content Area */}
         <div className="p-5 sm:p-7 overflow-y-auto space-y-5">
-          {errorMsg && (
-            <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-800 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
+          <ErrorBoundary
+            fallbackTitle={currentLang === 'am' ? 'የተጠቃሚ መረጃ በመጫን ላይ ስህተት ተፈጥሯል' : 'Error loading user account'}
+            fallbackMessage={currentLang === 'am' ? 'እባክዎ እንደገና ይሞክሩ ወይም ውጣ የሚለውን ተጭነው በድጋሚ ይግቡ።' : 'Please retry or click logout to sign in again.'}
+            onReset={onLogout}
+          >
+            {errorMsg && (
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-800 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
-          {successMsg && (
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              <span>{successMsg}</span>
-            </div>
-          )}
+            {successMsg && (
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+            )}
 
-          {currentUser ? (
+          {currentUser && !showAuthFormEvenIfLoggedIn ? (
             /* LOGGED IN USER PROFILE DASHBOARD */
             <div className="space-y-5">
               {/* User Card */}
@@ -216,13 +236,22 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                     </p>
                   </div>
                 </div>
-                <button
-                  onClick={onLogout}
-                  className="py-2 px-3 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-200 dark:border-rose-800/60"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>{currentLang === 'am' ? 'ውጣ' : 'Logout'}</span>
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setShowAuthFormEvenIfLoggedIn(true)}
+                    className="py-2 px-2.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold transition-colors cursor-pointer border border-stone-200 dark:border-stone-700"
+                    title={currentLang === 'am' ? 'በሌላ ስልክ ቁጥር ግባ ወይም ተመዝገብ' : 'Switch account / Register new'}
+                  >
+                    <span>{currentLang === 'am' ? 'ቀይር' : 'Switch'}</span>
+                  </button>
+                  <button
+                    onClick={onLogout}
+                    className="py-2 px-3 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer border border-rose-200 dark:border-rose-800/60"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>{currentLang === 'am' ? 'ውጣ' : 'Logout'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* UNLOCKED HOUSES SUMMARY STAT */}
@@ -233,10 +262,10 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                     <span>{currentLang === 'am' ? 'የተከፈቱልዎ ቤቶች' : 'Your Unlocked Listings'}</span>
                   </div>
                   <p className="text-xs text-stone-600 dark:text-stone-400 mt-1">
-                    {unlockedProperties.length > 0
+                    {resolvedUnlockedProperties.length > 0
                       ? (currentLang === 'am'
-                          ? `ለእርስዎ የተከፈቱ ${unlockedProperties.length} ቤቶች አሉ። የባለቤት ስልካቸውን በማንኛውም ጊዜ ማየት ይችላሉ።`
-                          : `You have ${unlockedProperties.length} unlocked listings. You can view owner contacts anytime.`)
+                          ? `ለእርስዎ የተከፈቱ ${resolvedUnlockedProperties.length} ቤቶች አሉ። የባለቤት ስልካቸውን በማንኛውም ጊዜ ማየት ይችላሉ።`
+                          : `You have ${resolvedUnlockedProperties.length} unlocked listings. You can view owner contacts anytime.`)
                       : (currentLang === 'am'
                           ? 'እስካሁን የተከፈተ ቤት የለም። የሚፈልጉትን ቤት መርጠው የመክፈቻ ክፍያውን መፈጸም ይችላሉ።'
                           : 'No listings unlocked yet. Choose a house and submit receipt to unlock.')}
@@ -245,7 +274,7 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
 
                 <div className="text-right shrink-0">
                   <div className="px-3.5 py-2 rounded-2xl bg-emerald-600 text-white font-black text-xl shadow-md">
-                    {unlockedProperties.length}
+                    {resolvedUnlockedProperties.length}
                   </div>
                 </div>
               </div>
@@ -271,7 +300,7 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                               : (currentLang === 'am' ? '🔑 የቤት መክፈቻ ክፍያ' : '🔑 Single Unlock')}
                           </p>
                           <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                            {req.amountBirr} ETB • {req.paymentMethod.toUpperCase()} • {req.transactionRef || 'Receipt'}
+                            {req.amountBirr || 0} ETB • {(req.paymentMethod || 'Payment').toUpperCase()} • {req.transactionRef || 'Receipt'}
                           </p>
                         </div>
                         <span
@@ -304,27 +333,28 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
                 <h4 className="text-xs font-black text-stone-800 dark:text-stone-200 uppercase tracking-wider flex items-center gap-1.5">
                   <Building2 className="w-4 h-4 text-emerald-600" />
                   <span>
-                    {currentLang === 'am' ? 'የተከፈቱልዎ ቤቶች (Watch List)' : 'Your Unlocked Houses to Watch'} ({unlockedProperties.length})
+                    {currentLang === 'am' ? 'የተከፈቱልዎ ቤቶች (Watch List)' : 'Your Unlocked Houses to Watch'} ({resolvedUnlockedProperties.length})
                   </span>
                 </h4>
 
-                {unlockedProperties.length > 0 ? (
+                {resolvedUnlockedProperties.length > 0 ? (
                   <div className="space-y-2 max-h-56 overflow-y-auto">
-                    {unlockedProperties.map((prop) => (
+                    {resolvedUnlockedProperties.map((prop) => (
                       <div
                         key={prop.id}
                         onClick={() => {
                           onClose();
-                          onSelectProperty(prop);
+                          if (onSelectProperty) onSelectProperty(prop);
+                          else if (onOpenPropertyDetails) onOpenPropertyDetails(prop);
                         }}
                         className="p-3 rounded-xl border border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 hover:border-emerald-500 transition-all cursor-pointer flex items-center justify-between"
                       >
                         <div className="truncate mr-2">
                           <p className="font-bold text-stone-900 dark:text-white text-xs truncate">
-                            {prop.title}
+                            {prop.title || 'House'}
                           </p>
                           <p className="text-[11px] text-stone-500 dark:text-stone-400">
-                            {prop.area} • {prop.price.toLocaleString()} ETB • Owner: {prop.ownerName}
+                            {prop.area || 'Addis Ababa'} • {Number(prop.price || 0).toLocaleString()} ETB • Owner: {prop.ownerName || 'Owner'}
                           </p>
                         </div>
                         <span className="shrink-0 text-xs font-bold text-emerald-600 dark:text-emerald-400">
@@ -343,6 +373,20 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
           ) : (
             /* REGISTRATION / LOGIN FORM */
             <form onSubmit={handleAuthSubmit} className="space-y-4">
+              {currentUser && showAuthFormEvenIfLoggedIn && (
+                <div className="flex items-center justify-between p-2.5 bg-stone-100 dark:bg-stone-800 rounded-xl text-xs">
+                  <span className="text-stone-600 dark:text-stone-400">
+                    {currentLang === 'am' ? `በ ${currentUser.name} ገብተዋል` : `Currently logged in as ${currentUser.name}`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthFormEvenIfLoggedIn(false)}
+                    className="text-emerald-600 dark:text-emerald-400 font-bold hover:underline cursor-pointer"
+                  >
+                    ← {currentLang === 'am' ? 'ወደ መለያዬ ተመለስ' : 'Back to My Account'}
+                  </button>
+                </div>
+              )}
               {/* Tab Selector */}
               <div className="bg-stone-100 dark:bg-stone-800 p-1 rounded-2xl grid grid-cols-2 gap-1 text-xs font-bold">
                 <button
@@ -456,6 +500,7 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
               </div>
             </form>
           )}
+          </ErrorBoundary>
         </div>
       </div>
     </div>

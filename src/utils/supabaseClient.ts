@@ -166,38 +166,44 @@ export async function savePropertyToSupabase(prop: Property): Promise<boolean> {
   if (!supabase) return false;
 
   try {
-    const row = {
+    const row: Record<string, any> = {
       id: prop.id,
       category: prop.category || 'home',
       title: prop.title,
-      title_am: prop.titleAm,
-      description: prop.description,
-      description_am: prop.descriptionAm,
+      title_am: prop.titleAm || prop.title,
+      description: prop.description || '',
+      description_am: prop.descriptionAm || prop.description || '',
       area: prop.area,
-      area_am: prop.areaAm,
-      sub_city: prop.subCity,
-      exact_landmark: prop.exactLandmark,
-      property_type: prop.propertyType,
-      listing_type: prop.listingType,
-      price: prop.price,
-      price_period: prop.pricePeriod,
-      bedrooms: prop.bedrooms,
-      bathrooms: prop.bathrooms,
-      area_sq_meters: prop.areaSqMeters,
-      images: (prop.images || []).map((img: any) => (typeof img === 'string' ? img : img.url)),
-      national_id_front_url: prop.nationalIdFrontUrl,
-      owner_phone: prop.ownerPhone,
-      owner_name: prop.ownerName,
-      owner_pin: prop.ownerPin,
-      seller_listing_fee_birr: prop.sellerListingFeeBirr,
-      seller_payment_screenshot_url: prop.sellerPaymentScreenshotUrl,
-      status: prop.status,
-      created_at: prop.createdAt,
-      expires_at: prop.expiresAt,
-      last_renewed_at: prop.lastRenewedAt,
+      area_am: prop.areaAm || prop.area,
+      sub_city: prop.subCity || 'Addis Ababa',
+      exact_landmark: prop.exactLandmark || '',
+      property_type: prop.propertyType || 'residential',
+      category_type: (prop as any).categoryType || 'apartment',
+      listing_type: prop.listingType || 'rent',
+      price: Number(prop.price) || 0,
+      price_period: prop.pricePeriod || 'month',
+      bedrooms: prop.bedrooms !== undefined && prop.bedrooms !== null ? Number(prop.bedrooms) : 1,
+      bathrooms: prop.bathrooms !== undefined && prop.bathrooms !== null ? Number(prop.bathrooms) : 1,
+      area_sq_meters: prop.areaSqMeters ? Number(prop.areaSqMeters) : null,
+      images: (prop.images || []).map((img: any) => (typeof img === 'string' ? img : (img?.url || ''))).filter(Boolean),
+      national_id_front_url: prop.nationalIdFrontUrl || null,
+      owner_phone: prop.ownerPhone || '',
+      owner_name: prop.ownerName || 'Owner',
+      owner_pin: prop.ownerPin || '1234',
+      seller_listing_fee_birr: prop.sellerListingFeeBirr ? Number(prop.sellerListingFeeBirr) : null,
+      seller_payment_screenshot_url: prop.sellerPaymentScreenshotUrl || null,
+      status: prop.status || 'pending',
+      created_at: prop.createdAt || new Date().toISOString(),
+      expires_at: prop.expiresAt || new Date(Date.now() + 7 * 86400000).toISOString(),
+      last_renewed_at: prop.lastRenewedAt || null,
       view_count: prop.viewCount || 0,
       unlock_count: prop.unlockCount || 0,
     };
+
+    // Remove any undefined keys
+    Object.keys(row).forEach((k) => {
+      if (row[k] === undefined) delete row[k];
+    });
 
     const { error } = await supabase.from('properties').upsert(row);
     if (error) {
@@ -225,6 +231,57 @@ export async function deletePropertyFromSupabase(propertyId: string): Promise<bo
   } catch (err) {
     console.warn('deletePropertyFromSupabase error:', err);
     return false;
+  }
+}
+
+/**
+ * Direct fast update of property status in Supabase
+ * (e.g. from 'pending' to 'active' on approval, or between 'active' and 'occupied')
+ */
+export async function updatePropertyStatusInSupabase(
+  propertyId: string,
+  status: 'active' | 'occupied' | 'expired' | 'pending',
+  extraFields?: { expiresAt?: string; lastRenewedAt?: string }
+): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+
+  try {
+    const payload: Record<string, any> = { status };
+    if (extraFields?.expiresAt) payload.expires_at = extraFields.expiresAt;
+    if (extraFields?.lastRenewedAt) payload.last_renewed_at = extraFields.lastRenewedAt;
+
+    const { error } = await supabase.from('properties').update(payload).eq('id', propertyId);
+    if (error) {
+      console.warn('updatePropertyStatusInSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('updatePropertyStatusInSupabase exception:', err);
+    return false;
+  }
+}
+
+/**
+ * Full clean-up of all test data for promo launch:
+ * Wipes out unlock_requests, user_unlocked_properties, user_packages, users, and properties
+ */
+export async function wipeAllTestDataFromSupabase(): Promise<{ success: boolean; message: string }> {
+  const supabase = getSupabase();
+  if (!supabase) return { success: false, message: 'Supabase client not initialized' };
+
+  try {
+    // Delete in dependency order
+    await supabase.from('unlock_requests').delete().neq('id', '___non_existent___');
+    await supabase.from('user_unlocked_properties').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('user_packages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    await supabase.from('users').delete().neq('phone', '___non_existent___');
+    await supabase.from('properties').delete().neq('id', '___non_existent___');
+    return { success: true, message: 'All test data wiped from Supabase successfully' };
+  } catch (err: any) {
+    console.warn('wipeAllTestDataFromSupabase error:', err);
+    return { success: false, message: err?.message || 'Error wiping test data' };
   }
 }
 

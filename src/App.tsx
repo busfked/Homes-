@@ -11,7 +11,8 @@ import {
   Filter, 
   Clock, 
   CheckCircle2, 
-  AlertTriangle 
+  AlertTriangle,
+  Share2
 } from 'lucide-react';
 import { 
   Property, 
@@ -27,8 +28,10 @@ import {
 } from './types';
 import { 
   getStoredProperties, 
+  loadPropertiesFromStorage,
   saveProperties, 
   getStoredUnlockRequests, 
+  loadUnlockRequestsFromStorage,
   saveUnlockRequests, 
   getStoredSettings, 
   saveSettings, 
@@ -75,6 +78,8 @@ import { AdminPanel } from './components/AdminPanel';
 import { MyRequestsModal } from './components/MyRequestsModal';
 import { ReportBrokerModal } from './components/ReportBrokerModal';
 import { UserAuthModal } from './components/UserAuthModal';
+import { ShareModal } from './components/ShareModal';
+import { parseSearchFiltersFromUrl, SearchFilterState } from './utils/shareUtils';
 
 export default function App() {
   // Localization state (Amharic default as requested)
@@ -115,14 +120,19 @@ export default function App() {
   // Navigation State
   const [activeTab, setActiveTab] = useState<'browse' | 'post' | 'owner' | 'my-requests' | 'admin'>('browse');
 
-  // Category & Filter States
-  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('home');
-  const [selectedArea, setSelectedArea] = useState<string>('all');
-  const [selectedType, setSelectedType] = useState<string>('all');
-  const [selectedListingType, setSelectedListingType] = useState<string>('all');
-  const [maxPrice, setMaxPrice] = useState<number>(0);
-  const [selectedBedrooms, setSelectedBedrooms] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  // URL Deep-Linking: read initial query params if present
+  const initialUrlData = useMemo(() => {
+    return parseSearchFiltersFromUrl();
+  }, []);
+
+  // Category & Filter States (initialized from URL if present)
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>(initialUrlData.filters.category || 'home');
+  const [selectedArea, setSelectedArea] = useState<string>(initialUrlData.filters.area || 'all');
+  const [selectedType, setSelectedType] = useState<string>(initialUrlData.filters.type || 'all');
+  const [selectedListingType, setSelectedListingType] = useState<string>(initialUrlData.filters.listingType || 'all');
+  const [maxPrice, setMaxPrice] = useState<number>(initialUrlData.filters.maxPrice || 0);
+  const [selectedBedrooms, setSelectedBedrooms] = useState<string>(initialUrlData.filters.bedrooms || 'all');
+  const [searchQuery, setSearchQuery] = useState<string>(initialUrlData.filters.searchQuery || '');
   const [onlyAvailable, setOnlyAvailable] = useState<boolean>(true);
 
   // Modal States
@@ -137,6 +147,10 @@ export default function App() {
   const [isMyRequestsModalOpen, setIsMyRequestsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isUserAuthModalOpen, setIsUserAuthModalOpen] = useState(false);
+  
+  // Social Media Sharing State
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareTargetProperty, setShareTargetProperty] = useState<Property | null>(null);
 
   // Admin direct posting & Owner pre-fill state
   const [isAdminPosting, setIsAdminPosting] = useState(false);
@@ -235,6 +249,29 @@ export default function App() {
     setBannedPhones(loadedBanned);
     setReportedBrokers(loadedReports);
 
+    // Asynchronously load full unpruned listings from high-capacity IndexedDB
+    loadPropertiesFromStorage().then((idbProps) => {
+      if (idbProps && idbProps.length > 0) {
+        setProperties((prev) => {
+          if (prev.length === 0 || idbProps.length >= prev.length) {
+            return idbProps;
+          }
+          return prev;
+        });
+      }
+    }).catch(() => {});
+
+    loadUnlockRequestsFromStorage().then((idbReqs) => {
+      if (idbReqs && idbReqs.length > 0) {
+        setUnlockRequests((prev) => {
+          if (prev.length === 0 || idbReqs.length >= prev.length) {
+            return idbReqs;
+          }
+          return prev;
+        });
+      }
+    }).catch(() => {});
+
     // Initial Live Sync from Supabase
     syncFromSupabase();
 
@@ -245,6 +282,36 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, []);
+
+  // Deep-link: automatically open property details if ?prop=xxx is in URL
+  useEffect(() => {
+    if (initialUrlData.targetPropertyId && properties.length > 0) {
+      const found = properties.find((p) => p.id === initialUrlData.targetPropertyId);
+      if (found) {
+        setSelectedPropertyForDetails(found);
+      }
+    }
+  }, [properties, initialUrlData.targetPropertyId]);
+
+  const currentSearchFilters: SearchFilterState = useMemo(() => ({
+    category: selectedCategory,
+    area: selectedArea,
+    type: selectedType,
+    listingType: selectedListingType,
+    maxPrice: maxPrice,
+    bedrooms: selectedBedrooms,
+    searchQuery: searchQuery,
+  }), [selectedCategory, selectedArea, selectedType, selectedListingType, maxPrice, selectedBedrooms, searchQuery]);
+
+  const handleOpenShareProperty = (property: Property) => {
+    setShareTargetProperty(property);
+    setIsShareModalOpen(true);
+  };
+
+  const handleOpenShareSearch = () => {
+    setShareTargetProperty(null);
+    setIsShareModalOpen(true);
+  };
 
   // Save changes to localStorage
   const updatePropertiesState = (newProps: Property[]) => {
@@ -691,6 +758,7 @@ export default function App() {
           currentUser={currentUser}
           onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
           onViewRequestsClick={() => setIsUserAuthModalOpen(true)}
+          onShareSearch={handleOpenShareSearch}
         />
 
         {/* Listings Section */}
@@ -712,7 +780,15 @@ export default function App() {
             </div>
 
             {/* Quick Action Badges */}
-            <div className="flex items-center gap-2 text-xs font-semibold">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <button
+                onClick={handleOpenShareSearch}
+                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/70 dark:hover:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer border border-emerald-300/50 dark:border-emerald-800 shadow-2xs font-bold"
+                title={t.shareSearch || 'Share Search'}
+              >
+                <Share2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>{currentLang === 'am' ? 'ፍለጋውን አጋራ' : 'Share Search'}</span>
+              </button>
               <button
                 onClick={() => setIsPostModalOpen(true)}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs font-bold"
@@ -792,6 +868,7 @@ export default function App() {
                       setSelectedPropertyForOwnerManage(p);
                       setIsOwnerManageModalOpen(true);
                     }}
+                    onShare={handleOpenShareProperty}
                   />
                 );
               })}
@@ -902,6 +979,7 @@ export default function App() {
           setSelectedPropertyForReport(prop);
           setIsReportModalOpen(true);
         }}
+        onShare={handleOpenShareProperty}
       />
 
       {/* 2. Post House Modal (Owner & Admin Direct) */}
@@ -1048,6 +1126,19 @@ export default function App() {
           setIsUserAuthModalOpen(false);
           setSelectedPropertyForUnlock(properties[0] || null);
         }}
+      />
+
+      {/* 9. Social Media Share Modal */}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => {
+          setIsShareModalOpen(false);
+          setShareTargetProperty(null);
+        }}
+        property={shareTargetProperty}
+        searchFilters={currentSearchFilters}
+        totalResultsCount={filteredProperties.length}
+        currentLang={currentLang}
       />
     </div>
   );

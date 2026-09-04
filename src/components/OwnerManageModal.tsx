@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { X, KeyRound, CheckCircle, Clock, Trash2, RefreshCw, AlertTriangle, ShieldCheck, Home, Phone } from 'lucide-react';
+import { X, KeyRound, CheckCircle, Clock, Trash2, RefreshCw, AlertTriangle, ShieldCheck, Home, Phone, Eye, Check } from 'lucide-react';
 import { Property, Language } from '../types';
 import { translations } from '../data/translations';
 import { getDaysRemaining } from '../utils/storage';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface OwnerManageModalProps {
   isOpen: boolean;
@@ -39,6 +40,7 @@ export const OwnerManageModal: React.FC<OwnerManageModalProps> = ({
   );
   const [authError, setAuthError] = useState('');
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,40 +66,46 @@ export const OwnerManageModal: React.FC<OwnerManageModalProps> = ({
     setIsAuthenticated(true);
   };
 
-  const handleOccupiedClick = (propertyId: string) => {
-    onMarkOccupied(propertyId);
-    setOwnerProperties((prev) =>
-      prev.map((p) => (p.id === propertyId ? { ...p, status: 'occupied' } : p))
-    );
-    setActionSuccessMsg(t.occupiedSuccess);
-  };
-
-  const handleRenewClick = (propertyId: string) => {
-    onRenewProperty(propertyId);
-    const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    setOwnerProperties((prev) =>
-      prev.map((p) =>
-        p.id === propertyId
-          ? { ...p, status: 'active', expiresAt: newExpiresAt, lastRenewedAt: new Date().toISOString() }
-          : p
-      )
-    );
-    setActionSuccessMsg(t.renewedSuccess);
+  const handleToggleStatus = (propertyId: string, targetStatus: 'active' | 'occupied') => {
+    if (targetStatus === 'active') {
+      onRenewProperty(propertyId);
+      const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      setOwnerProperties((prev) =>
+        prev.map((p) =>
+          p.id === propertyId
+            ? { ...p, status: 'active', expiresAt: newExpiresAt, lastRenewedAt: new Date().toISOString() }
+            : p
+        )
+      );
+      setActionSuccessMsg(
+        currentLang === 'am'
+          ? '✓ ቤቱ ወደ ገበያ ተመልሷል (Available)! ወዲያውኑ በፊት ገጽ ላይ ይታያል።'
+          : '✓ Listing is now Available! Immediately visible on front page.'
+      );
+    } else {
+      onMarkOccupied(propertyId);
+      setOwnerProperties((prev) =>
+        prev.map((p) => (p.id === propertyId ? { ...p, status: 'occupied' } : p))
+      );
+      setActionSuccessMsg(
+        currentLang === 'am'
+          ? '✓ ቤቱ "ተከራይቷል/ተሽጧል" ተብሎ ተመዝግቧል።'
+          : '✓ Listing marked as Rented / Occupied.'
+      );
+    }
   };
 
   const handleDeleteClick = (propertyId: string) => {
-    if (
-      window.confirm(
-        currentLang === 'am'
-          ? 'ይህንን ቤት ከዳታቤዝ ላይ ሙሉ በሙሉ ማጥፋት ይፈልጋሉ?'
-          : 'Are you sure you want to permanently delete this house listing?'
-      )
-    ) {
+    if (deleteConfirmId === propertyId) {
       onDeleteProperty(propertyId);
       setOwnerProperties((prev) => prev.filter((p) => p.id !== propertyId));
+      setDeleteConfirmId(null);
       setActionSuccessMsg(
-        currentLang === 'am' ? 'ቤቱ በተሳካ ሁኔታ ተሰርዟል!' : 'Listing successfully deleted!'
+        currentLang === 'am' ? 'ቤቱ በተሳካ ሁኔታ ከዳታቤዝ ተሰርዟል!' : 'Listing successfully deleted from database!'
       );
+    } else {
+      setDeleteConfirmId(propertyId);
+      setTimeout(() => setDeleteConfirmId(null), 5000);
     }
   };
 
@@ -129,12 +137,16 @@ export const OwnerManageModal: React.FC<OwnerManageModalProps> = ({
 
         {/* Body */}
         <div className="overflow-y-auto p-5 sm:p-7 space-y-6">
-          {actionSuccessMsg && (
-            <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 animate-in zoom-in-95">
-              <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>{actionSuccessMsg}</span>
-            </div>
-          )}
+          <ErrorBoundary
+            fallbackTitle={currentLang === 'am' ? 'የባለቤት ገጽ በመጫን ላይ ስህተት ተፈጥሯል' : 'Error loading owner portal'}
+            fallbackMessage={currentLang === 'am' ? 'እባክዎ እንደገና ይሞክሩ።' : 'Please try again.'}
+          >
+            {actionSuccessMsg && (
+              <div className="p-3.5 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 animate-in zoom-in-95">
+                <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>{actionSuccessMsg}</span>
+              </div>
+            )}
 
           {!isAuthenticated ? (
             /* OWNER LOGIN FORM */
@@ -333,38 +345,54 @@ export const OwnerManageModal: React.FC<OwnerManageModalProps> = ({
 
                         {/* KEY OWNER ACTION BUTTONS */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-stone-200 dark:border-stone-700">
-                          {/* 1. OCCUPIED BUTTON */}
+                          {/* 1. OCCUPIED / AVAILABLE SMART TOGGLE */}
                           <button
-                            onClick={() => handleOccupiedClick(prop.id)}
-                            disabled={prop.status === 'occupied'}
-                            className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                            onClick={() => handleToggleStatus(prop.id, prop.status === 'occupied' ? 'active' : 'occupied')}
+                            className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                               prop.status === 'occupied'
-                                ? 'bg-stone-200 dark:bg-stone-800 text-stone-500 cursor-not-allowed'
-                                : 'bg-stone-900 dark:bg-stone-700 hover:bg-stone-800 text-white shadow-xs cursor-pointer'
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                                : 'bg-stone-900 dark:bg-stone-700 hover:bg-stone-800 text-white shadow-xs'
                             }`}
-                            title={t.markAsOccupiedDesc}
+                            title={prop.status === 'occupied' ? 'Mark available again' : t.markAsOccupiedDesc}
                           >
-                            <CheckCircle className="w-4 h-4 text-emerald-400" />
-                            <span>{t.markAsOccupied}</span>
+                            {prop.status === 'occupied' ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 text-emerald-200 animate-spin-once" />
+                                <span>{currentLang === 'am' ? 'ወደ ገበያ መልስ (Available)' : 'Make Available'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="w-4 h-4 text-emerald-400" />
+                                <span>{currentLang === 'am' ? 'ተከራይቷል (Mark Rented)' : 'Mark as Rented'}</span>
+                              </>
+                            )}
                           </button>
 
                           {/* 2. RENEW 7 DAYS BUTTON */}
                           <button
-                            onClick={() => handleRenewClick(prop.id)}
-                            className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                            onClick={() => handleToggleStatus(prop.id, 'active')}
+                            className="py-2.5 px-3 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer"
                             title={t.renewListingDesc}
                           >
-                            <RefreshCw className="w-4 h-4" />
-                            <span>{t.renewListing}</span>
+                            <Clock className="w-4 h-4 text-indigo-500" />
+                            <span>{currentLang === 'am' ? 'የ 7 ቀን ዕድሜ አድስ' : 'Renew 7 Days'}</span>
                           </button>
 
                           {/* 3. DELETE LISTING BUTTON */}
                           <button
                             onClick={() => handleDeleteClick(prop.id)}
-                            className="py-2.5 px-3 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                            className={`py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                              deleteConfirmId === prop.id
+                                ? 'bg-rose-600 text-white animate-pulse'
+                                : 'bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 text-rose-700 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                            }`}
                           >
-                            <Trash2 className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                            <span>{t.deleteListing}</span>
+                            <Trash2 className="w-4 h-4" />
+                            <span>
+                              {deleteConfirmId === prop.id
+                                ? (currentLang === 'am' ? 'እርግጠኛ ነዎት? ለማጥፋት ይጫኑ' : 'Confirm Delete?')
+                                : t.deleteListing}
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -374,6 +402,7 @@ export const OwnerManageModal: React.FC<OwnerManageModalProps> = ({
               )}
             </div>
           )}
+          </ErrorBoundary>
         </div>
       </div>
     </div>
