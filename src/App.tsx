@@ -69,7 +69,8 @@ import {
   fetchUsersFromSupabase,
   fetchUserByPhoneFromSupabase,
   saveUserToSupabase,
-  saveUserUnlockedPropertyToSupabase
+  saveUserUnlockedPropertyToSupabase,
+  wipeAllTestDataFromSupabase
 } from './utils/supabaseClient';
 import { getTierForProperty, PRICE_TIERS } from './utils/pricing';
 import { translations } from './data/translations';
@@ -785,6 +786,40 @@ export default function App() {
     );
   };
 
+  // Full Wipe of all test/demo data (Properties, Unlock Requests, Users, etc.)
+  const handleWipeAllTestData = async () => {
+    try {
+      await wipeAllTestDataFromSupabase();
+    } catch (err) {
+      console.warn('Supabase wipe notice:', err);
+    }
+
+    // Wipe local storage & indexedDB
+    saveProperties([]);
+    saveUnlockRequests([]);
+    saveUsers([]);
+    saveBannedPhones([]);
+    saveReportedBrokers([]);
+    try {
+      localStorage.removeItem('betdelala_active_user_session');
+      localStorage.removeItem('betdelala_current_user_phone');
+    } catch {}
+
+    // Reset React state
+    setProperties([]);
+    setUnlockRequests([]);
+    setReportedBrokers([]);
+    setBannedPhones([]);
+    setCurrentUser(null);
+    setUserPhone('');
+
+    showToast(
+      currentLang === 'am'
+        ? 'ሁሉም የሙከራ መረጃዎች በሙሉ ተሰርዘዋል! ገቢዎ 0 ሆኗል።'
+        : 'All test data wiped clean! Balance and earnings reset to 0 ETB.'
+    );
+  };
+
   // Save Settings
   const handleSaveSettings = (newSettings: PaymentSettings) => {
     setPaymentSettings(newSettings);
@@ -1245,6 +1280,7 @@ export default function App() {
         onTogglePropertyStatus={handleTogglePropertyStatus}
         onApproveProperty={handleApproveProperty}
         onApproveAllPendingProperties={handleApproveAllPendingProperties}
+        onWipeAllTestData={handleWipeAllTestData}
         onOpenPostPropertyAsAdmin={() => {
           setIsAdminPanelOpen(false);
           setIsAdminPosting(true);

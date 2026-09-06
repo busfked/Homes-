@@ -328,12 +328,13 @@ export async function wipeAllTestDataFromSupabase(): Promise<{ success: boolean;
   if (!supabase) return { success: false, message: 'Supabase client not initialized' };
 
   try {
-    // Delete in dependency order
-    await supabase.from('unlock_requests').delete().neq('id', '___non_existent___');
-    await supabase.from('user_unlocked_properties').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await supabase.from('user_packages').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    await supabase.from('users').delete().neq('phone', '___non_existent___');
-    await supabase.from('properties').delete().neq('id', '___non_existent___');
+    // Delete in dependency order with isolated catches
+    try { await supabase.from('unlock_requests').delete().neq('id', '___non_existent___'); } catch (e) { console.debug('Clear unlock_requests notice:', e); }
+    try { await supabase.from('user_unlocked_properties').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear user_unlocked_properties notice:', e); }
+    try { await supabase.from('user_packages').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear user_packages notice:', e); }
+    try { await supabase.from('reported_brokers').delete().neq('id', '___non_existent___'); } catch (e) { console.debug('Clear reported_brokers notice:', e); }
+    try { await supabase.from('users').delete().neq('phone', '___non_existent___'); } catch (e) { console.debug('Clear users notice:', e); }
+    try { await supabase.from('properties').delete().neq('id', '___non_existent___'); } catch (e) { console.debug('Clear properties notice:', e); }
     return { success: true, message: 'All test data wiped from Supabase successfully' };
   } catch (err: any) {
     console.warn('wipeAllTestDataFromSupabase error:', err);

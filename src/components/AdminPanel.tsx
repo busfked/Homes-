@@ -4,6 +4,7 @@ import {
   Check, 
   X, 
   Eye, 
+  EyeOff,
   DollarSign, 
   Clock, 
   Building, 
@@ -132,6 +133,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isWipingData, setIsWipingData] = useState(false);
   const [wipeDataSuccessMsg, setWipeDataSuccessMsg] = useState('');
 
+  // Hide/Show balance toggle with localStorage persistence
+  const [isBalanceHidden, setIsBalanceHidden] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('betdelala_hide_admin_balance') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleHideBalance = () => {
+    setIsBalanceHidden((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('betdelala_hide_admin_balance', String(next));
+      } catch {}
+      return next;
+    });
+  };
+
   // Owner ID verification modal state
   const [viewingOwnerId, setViewingOwnerId] = useState<{
     idUrl: string;
@@ -243,6 +263,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Supabase SQL copy state
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedTruncateSql, setCopiedTruncateSql] = useState(false);
+  const TRUNCATE_SQL = `-- Run this in your Supabase SQL Editor to wipe all test/demo records & reset earnings to 0:
+TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, user_packages CASCADE;`;
+
+  const handleCopyTruncateSql = () => {
+    navigator.clipboard.writeText(TRUNCATE_SQL);
+    setCopiedTruncateSql(true);
+    setTimeout(() => setCopiedTruncateSql(false), 3000);
+  };
   const [searchFilter, setSearchFilter] = useState('');
 
   // Supabase live connection testing states
@@ -561,11 +590,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Top Metrics Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 sm:p-6 bg-stone-50 dark:bg-stone-850 border-b border-stone-200 dark:border-stone-800">
               <div className="bg-white dark:bg-stone-800 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-700 shadow-2xs">
-                <span className="text-[11px] text-stone-500 dark:text-stone-400 font-semibold block">{t.totalRevenue}</span>
-                <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-sans mt-0.5">
-                  {totalRevenueEtb.toLocaleString()} <span className="text-xs">{t.etb}</span>
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[11px] text-stone-500 dark:text-stone-400 font-semibold block">{t.totalRevenue}</span>
+                  <button
+                    type="button"
+                    onClick={toggleHideBalance}
+                    className="p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 rounded-md transition-colors cursor-pointer"
+                    title={isBalanceHidden ? (currentLang === 'am' ? 'ሒሳብ አሳይ (Show balance)' : 'Show balance') : (currentLang === 'am' ? 'ሒሳብ ደብቅ (Hide balance)' : 'Hide balance')}
+                  >
+                    {isBalanceHidden ? <EyeOff className="w-3.5 h-3.5 text-amber-500" /> : <Eye className="w-3.5 h-3.5 text-stone-400" />}
+                  </button>
                 </div>
-                <span className="text-[10px] text-stone-400">{approvedRequests.length} approvals</span>
+                <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-sans mt-0.5">
+                  {isBalanceHidden ? (
+                    <span className="tracking-widest font-mono text-stone-400 dark:text-stone-500 text-base sm:text-lg">•••••• ETB</span>
+                  ) : (
+                    <>
+                      {totalRevenueEtb.toLocaleString()} <span className="text-xs">{t.etb}</span>
+                    </>
+                  )}
+                </div>
+                <span className="text-[10px] text-stone-400">
+                  {isBalanceHidden ? '•••• approvals' : `${approvedRequests.length} approvals`}
+                </span>
               </div>
 
               <div className="bg-white dark:bg-stone-800 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-700 shadow-2xs">
@@ -2071,6 +2118,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     <pre className="bg-stone-950 text-stone-200 p-3.5 rounded-xl text-[11px] font-mono overflow-x-auto max-h-40">
                       {SUPABASE_SQL_SCHEMA}
                     </pre>
+                  </div>
+
+                  {/* Clear / Reset Supabase Tables (Wipe Demo Data & 0 Earnings) */}
+                  <div className="bg-rose-50/60 dark:bg-rose-950/20 p-5 rounded-2xl border-2 border-rose-200 dark:border-rose-900/60 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🧹</span>
+                          <h5 className="font-extrabold text-stone-900 dark:text-stone-100 text-sm">
+                            {currentLang === 'am' ? 'Supabase ሰንጠረዦችን ማጽዳትና ገቢን 0 ማድረግ (Wipe All Demo Data)' : 'Clear Supabase Tables & Reset Earnings to 0'}
+                          </h5>
+                        </div>
+                        <p className="text-xs text-stone-600 dark:text-stone-300 mt-1 max-w-xl">
+                          {currentLang === 'am'
+                            ? 'በሙከራ ጊዜ የተመዘገቡ ቤቶችን፣ የክፍያ ጥያቄዎችን እና ተጠቃሚዎችን ከ Supabase ዳታቤዝ ለማጽዳትና ገቢዎን 0 አድርገው በአዲስ መልክ ለመጀመር ይጠቀሙበት።'
+                            : 'Wipe all demo property listings, test payment requests, and mock accounts from Supabase to start fresh with 0 ETB earnings.'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowWipeDataModal(true)}
+                        className="py-2.5 px-4 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-black flex items-center gap-2 shadow-xs cursor-pointer shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>{currentLang === 'am' ? 'ሁሉንም ዳታዎች አጽዳ (Wipe Clean)' : 'Wipe All Demo Data'}</span>
+                      </button>
+                    </div>
+
+                    <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/40 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-stone-700 dark:text-stone-300">
+                          {currentLang === 'am' ? 'በ Supabase SQL Editor ውስጥ በቀጥታ ለማጽዳት (Manual SQL):' : 'Or run directly in Supabase Dashboard SQL Editor:'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleCopyTruncateSql}
+                          className="py-1 px-2.5 bg-stone-900 dark:bg-stone-700 hover:bg-stone-800 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <Copy className="w-3 h-3" />
+                          <span>{copiedTruncateSql ? (currentLang === 'am' ? 'ተቀድቷል!' : 'Copied!') : (currentLang === 'am' ? 'SQL ቅዳ' : 'Copy SQL')}</span>
+                        </button>
+                      </div>
+
+                      <pre className="bg-stone-950 text-emerald-400 p-2.5 rounded-xl text-[11px] font-mono overflow-x-auto">
+                        {TRUNCATE_SQL}
+                      </pre>
+                    </div>
                   </div>
 
                   {/* Step 2: Vercel Deploy Steps */}
