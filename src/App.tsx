@@ -170,6 +170,9 @@ export default function App() {
     return stored === null ? true : stored === 'true';
   });
   const lastSyncTimeRef = useRef<number>(0);
+  // Keep optimistic moderation decisions from being overwritten by a stale refresh.
+  const requestStatusOverridesRef = useRef<Record<string, { status: 'approved' | 'rejected'; approvedAt?: string; adminNote?: string }>>({});
+  const propertyStatusOverridesRef = useRef<Record<string, 'active' | 'occupied' | 'pending'>>({});
 
   // Toast / Status Message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -216,11 +219,20 @@ export default function App() {
 
           const updatedProps = prevProps.map((localP) => {
             const remoteItem = summary.find((s) => s.id === localP.id);
-            if (remoteItem && remoteItem.status !== localP.status) {
+            const localStatusOverride = propertyStatusOverridesRef.current[localP.id];
+            const remoteStatus = localStatusOverride && remoteItem?.status === 'pending'
+              ? localStatusOverride
+              : remoteItem?.status;
+
+            if (localStatusOverride && remoteItem?.status === localStatusOverride) {
+              delete propertyStatusOverridesRef.current[localP.id];
+            }
+
+            if (remoteItem && remoteStatus !== localP.status) {
               statusChangedCount++;
               return {
                 ...localP,
-                status: remoteItem.status,
+                status: remoteStatus || localP.status,
                 unlockCount: remoteItem.unlock_count ?? localP.unlockCount,
                 viewCount: remoteItem.view_count ?? localP.viewCount,
               };
@@ -286,8 +298,23 @@ export default function App() {
       if (activeTab === 'admin' || adminDataOnly) {
         const remoteReqs = await fetchUnlockRequestsFromSupabase();
         if (remoteReqs && Array.isArray(remoteReqs)) {
-          setUnlockRequests(remoteReqs);
-          saveUnlockRequests(remoteReqs);
+          const reconciledRequests = remoteReqs.map((remoteReq) => {
+            const localDecision = requestStatusOverridesRef.current[remoteReq.id];
+            if (localDecision && remoteReq.status === 'pending') {
+              return {
+                ...remoteReq,
+                status: localDecision.status,
+                approvedAt: localDecision.approvedAt || remoteReq.approvedAt,
+                adminNote: localDecision.adminNote || remoteReq.adminNote,
+              };
+            }
+            if (localDecision && remoteReq.status === localDecision.status) {
+              delete requestStatusOverridesRef.current[remoteReq.id];
+            }
+            return remoteReq;
+          });
+          setUnlockRequests(reconciledRequests);
+          saveUnlockRequests(reconciledRequests);
         }
       } else if (activeTab === 'my-requests' && userPhone) {
         const myReqs = await fetchUnlockRequestsForPhoneFromSupabase(userPhone);
@@ -456,9 +483,9 @@ export default function App() {
 
   // Add New Property (from PostHouseModal)
   const handleAddProperty = (newProp: Property) => {
-    // Only direct admin posts (or explicitly enabled autoApproveListings) bypass approval.
-    // All normal owner posts with screenshots MUST be reviewed and approved by the admin!
-    const shouldAutoApprove = Boolean(isAdminPosting || (paymentSettings.autoApproveListings === true));
+    // Only direct admin posts bypass approval. Owner submissions must always be
+    // reviewed against their payment proof before appearing publicly.
+    const shouldAutoApprove = Boolean(isAdminPosting);
     const finalProp: Property = {
       ...newProp,
       status: shouldAutoApprove ? 'active' : 'pending',
@@ -513,6 +540,25 @@ export default function App() {
 
   // Submit Unlock or Package Request
   const handleSubmitUnlockRequest = (newReq: UnlockRequest) => {
+    const cleanBuyerPhone = newReq.buyerPhone.replace(/[\s-]/g, '');
+    const existingRequest = newReq.propertyId
+      ? unlockRequests.find(
+          (r) =>
+            r.propertyId === newReq.propertyId &&
+            r.buyerPhone.replace(/[\s-]/g, '') === cleanBuyerPhone &&
+            (r.status === 'pending' || r.status === 'approved')
+        )
+      : undefined;
+
+    if (existingRequest) {
+      showToast(
+        existingRequest.status === 'approved'
+          ? (currentLang === 'am' ? 'ይህ ቤት ቀድሞ ተከፍቷል።' : 'This home is already unlocked for your phone.')
+          : (currentLang === 'am' ? 'የዚህ ቤት ክፍያ ቀድሞ ተልኳል። እባክዎ ይጠብቁ።' : 'A payment request for this home is already pending. Please wait for review.')
+      );
+      return;
+    }
+
     const updated = [newReq, ...unlockRequests.filter((r) => r.id !== newReq.id)];
     updateRequestsState(updated);
     if (newReq.buyerPhone) {
@@ -535,12 +581,15 @@ export default function App() {
   // Admin Approve Request
   const handleApproveRequest = (requestId: string) => {
     const targetReq = unlockRequests.find((r) => r.id === requestId);
-    if (!targetReq) return;
+    // Approval is one-way: never grant the same request's access twice.
+    if (!targetReq || targetReq.status !== 'pending') return;
 
+    const approvedAt = new Date().toISOString();
+    requestStatusOverridesRef.current[requestId] = { status: 'approved', approvedAt };
     const approvedReq: UnlockRequest = {
       ...targetReq,
       status: 'approved' as const,
-      approvedAt: new Date().toISOString(),
+      approvedAt,
     };
 
     const updated = unlockRequests.map((r) =>
@@ -552,6 +601,7 @@ export default function App() {
     // Process based on request type
     if (targetReq.type === 'owner_listing_fee' && targetReq.propertyId) {
       // Activate pending owner property
+      propertyStatusOverridesRef.current[targetReq.propertyId] = 'active';
       const updatedProps = properties.map((p) =>
         p.id === targetReq.propertyId ? { ...p, status: 'active' as const } : p
       );
@@ -633,8 +683,9 @@ export default function App() {
   // Admin Reject Request
   const handleRejectRequest = (requestId: string, note?: string) => {
     const targetReq = unlockRequests.find((r) => r.id === requestId);
-    if (!targetReq) return;
+    if (!targetReq || targetReq.status !== 'pending') return;
 
+    requestStatusOverridesRef.current[requestId] = { status: 'rejected', adminNote: note };
     const rejectedReq: UnlockRequest = {
       ...targetReq,
       status: 'rejected' as const,
@@ -672,6 +723,7 @@ export default function App() {
   const handleTogglePropertyStatus = (propertyId: string, newStatus: 'active' | 'occupied') => {
     const targetProp = properties.find((p) => p.id === propertyId);
     if (!targetProp) return;
+    propertyStatusOverridesRef.current[propertyId] = newStatus;
     const updatedProp: Property = { ...targetProp, status: newStatus };
     const updated = properties.map((p) => (p.id === propertyId ? updatedProp : p));
     updatePropertiesState(updated);
@@ -688,6 +740,7 @@ export default function App() {
     const targetProp = properties.find((p) => p.id === propertyId);
     if (!targetProp) return;
     const approvedProp: Property = { ...targetProp, status: 'active' };
+    propertyStatusOverridesRef.current[propertyId] = 'active';
     const updated = properties.map((p) => (p.id === propertyId ? approvedProp : p));
     updatePropertiesState(updated);
     savePropertyToSupabase(approvedProp).catch(console.warn);
@@ -695,10 +748,12 @@ export default function App() {
     // Also update any pending unlock request for this property
     const linkedReq = unlockRequests.find((r) => r.propertyId === propertyId && r.status === 'pending');
     if (linkedReq) {
+      const linkedApprovedAt = new Date().toISOString();
+      requestStatusOverridesRef.current[linkedReq.id] = { status: 'approved', approvedAt: linkedApprovedAt };
       const approvedReq: UnlockRequest = {
         ...linkedReq,
         status: 'approved',
-        approvedAt: new Date().toISOString(),
+        approvedAt: linkedApprovedAt,
       };
       const updatedReqs = unlockRequests.map((r) => (r.id === linkedReq.id ? approvedReq : r));
       updateRequestsState(updatedReqs);
@@ -714,10 +769,16 @@ export default function App() {
 
   // Admin Approve all pending properties in 1 click
   const handleApproveAllPendingProperties = () => {
-    const pendingProps = properties.filter((p) => p.status === 'pending');
+    const pendingProps = properties.filter((p) => p.status === 'pending' || p.status === 'pending_approval');
     if (pendingProps.length === 0) return;
 
-    const updated = properties.map((p) => (p.status === 'pending' ? { ...p, status: 'active' as const } : p));
+    const updated = properties.map((p) => {
+      if (p.status === 'pending' || p.status === 'pending_approval') {
+        propertyStatusOverridesRef.current[p.id] = 'active';
+        return { ...p, status: 'active' as const };
+      }
+      return p;
+    });
     updatePropertiesState(updated);
 
     pendingProps.forEach((p) => {
@@ -727,10 +788,12 @@ export default function App() {
     // Also approve associated pending unlock requests
     const updatedReqs = unlockRequests.map((r) => {
       if (r.propertyId && pendingProps.some((p) => p.id === r.propertyId) && r.status === 'pending') {
+        const approvedAt = new Date().toISOString();
+        requestStatusOverridesRef.current[r.id] = { status: 'approved', approvedAt };
         const approved: UnlockRequest = {
           ...r,
           status: 'approved',
-          approvedAt: new Date().toISOString(),
+          approvedAt,
         };
         saveUnlockRequestToSupabase(approved).catch(console.warn);
         return approved;
@@ -913,8 +976,6 @@ export default function App() {
     setSearchQuery('');
     setOnlyAvailable(true);
   };
-
-  const pendingApprovalsCount = unlockRequests.filter((r) => r.status === 'pending').length;
 
   return (
     <div className="min-h-screen bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100 flex flex-col font-sans selection:bg-emerald-100 selection:text-emerald-900 transition-colors">

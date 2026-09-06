@@ -825,7 +825,8 @@ export function getStoredSettings(): PaymentSettings {
       boaAccount: parsed.boaAccount || '61648817',
       boaName: parsed.boaName || 'BetDelala (Bank of Abyssinia / አቢሲኒያ)',
       adminPin,
-      autoApproveListings: parsed.autoApproveListings !== undefined ? Boolean(parsed.autoApproveListings) : false,
+      // Owner listings always require manual payment-proof approval.
+      autoApproveListings: false,
     };
     return updated;
   } catch (err) {
@@ -835,7 +836,10 @@ export function getStoredSettings(): PaymentSettings {
 
 export function saveSettings(settings: PaymentSettings): void {
   try {
-    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    localStorage.setItem(
+      STORAGE_KEYS.SETTINGS,
+      JSON.stringify({ ...settings, autoApproveListings: false })
+    );
   } catch (err) {
     console.error('Error saving settings:', err);
   }

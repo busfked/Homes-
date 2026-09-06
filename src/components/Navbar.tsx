@@ -25,7 +25,6 @@ interface NavbarProps {
   onToggleTheme?: () => void;
   activeTab: 'browse' | 'post' | 'owner' | 'my-requests' | 'admin';
   setActiveTab: (tab: 'browse' | 'post' | 'owner' | 'my-requests' | 'admin') => void;
-  pendingApprovalsCount: number;
   userPhone: string;
   currentUser?: UserAccount | null;
   onOpenUserPhoneModal: () => void;
@@ -43,7 +42,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleTheme,
   activeTab,
   setActiveTab,
-  pendingApprovalsCount,
   userPhone,
   currentUser,
   onOpenUserPhoneModal,
@@ -155,23 +153,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>{t.myRequests}</span>
             </button>
 
-            <button
-              id="nav-admin"
-              onClick={() => setActiveTab('admin')}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all relative cursor-pointer ${
-                activeTab === 'admin'
-                  ? 'bg-stone-900 dark:bg-emerald-600 text-white shadow-sm'
-                  : 'text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>{t.adminPanel}</span>
-              {pendingApprovalsCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-bold animate-bounce">
-                  {pendingApprovalsCount}
-                </span>
-              )}
-            </button>
+
           </nav>
 
           {/* Right Action Tools: Language Switcher, Theme Toggle, Data Saver & Post CTA */}
@@ -295,7 +277,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Mobile Navigation Row (All fit seamlessly in one row) */}
-        <div className="lg:hidden grid grid-cols-4 gap-1 py-2 border-t border-stone-100 dark:border-stone-800 text-[11px] font-medium">
+        <div className="lg:hidden grid grid-cols-3 gap-1 py-2 border-t border-stone-100 dark:border-stone-800 text-[11px] font-medium">
           <button
             onClick={() => setActiveTab('browse')}
             className={`py-1.5 px-1 rounded-lg text-center truncate cursor-pointer ${
@@ -326,21 +308,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             {currentLang === 'am' ? 'የእኔ ጥያቄ' : 'Requests'}
           </button>
-          <button
-            onClick={() => setActiveTab('admin')}
-            className={`py-1.5 px-1 rounded-lg text-center flex items-center justify-center gap-1 cursor-pointer ${
-              activeTab === 'admin'
-                ? 'bg-stone-900 dark:bg-emerald-600 text-white font-bold'
-                : 'text-stone-600 dark:text-stone-400'
-            }`}
-          >
-            <span className="truncate">{currentLang === 'am' ? 'አድሚን' : 'Admin'}</span>
-            {pendingApprovalsCount > 0 && (
-              <span className="px-1 py-0.2 rounded-full bg-rose-500 text-white text-[9px] font-bold">
-                {pendingApprovalsCount}
-              </span>
-            )}
-          </button>
+
         </div>
       </div>
     </header>

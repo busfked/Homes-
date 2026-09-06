@@ -292,7 +292,7 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
   const approvedRequests = unlockRequests.filter((r) => r.status === 'approved');
   const totalRevenueEtb = approvedRequests.reduce((sum, r) => sum + (r.amountBirr || 50), 0);
   const activeHouses = properties.filter((p) => p.status === 'active');
-  const pendingHouses = properties.filter((p) => p.status === 'pending');
+  const pendingHouses = properties.filter((p) => p.status === 'pending' || p.status === 'pending_approval');
   const occupiedHouses = properties.filter((p) => p.status === 'occupied');
   const [inventoryStatusFilter, setInventoryStatusFilter] = useState<'all' | 'pending' | 'active' | 'occupied'>('all');
   const expiredHouses = properties.filter((p) => {
@@ -1313,14 +1313,14 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                   <div className="space-y-3">
                     {properties
                       .filter((p) => {
-                        if (inventoryStatusFilter === 'pending') return p.status === 'pending';
+                        if (inventoryStatusFilter === 'pending') return p.status === 'pending' || p.status === 'pending_approval';
                         if (inventoryStatusFilter === 'active') return p.status === 'active';
                         if (inventoryStatusFilter === 'occupied') return p.status === 'occupied';
                         return true;
                       })
                       .map((prop) => {
                         const { days, hours, isExpired } = getDaysRemaining(prop.expiresAt);
-                        const isPending = prop.status === 'pending';
+                        const isPending = prop.status === 'pending' || prop.status === 'pending_approval';
 
                         return (
                           <div
@@ -1816,37 +1816,14 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                     </div>
                   </div>
 
-                  {/* Auto-Approve Owner Listings Switch */}
-                  <div className="p-4 bg-emerald-50/80 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                          <span className="text-xs sm:text-sm font-black text-stone-900 dark:text-white">
-                            {currentLang === 'am'
-                              ? 'የባለቤት ማስታወቂያዎች በቀጥታ እንዲለጥፉ (Auto-Approve Live)'
-                              : 'Auto-Approve Owner Listings (Live Instantly)'}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-stone-600 dark:text-stone-300">
-                          {currentLang === 'am'
-                            ? 'ሲበራ፡ ባለቤቶች ቤት ወይም ንብረት ሲለጥፉ ወዲያውኑ በድረ-ገጹ ዋና ገጽ ላይ ይታያል። ሲጠፋ፡ አስተዳዳሪው እዚህ መጥቶ በ 1-ክሊክ እስኪያጸድቅ ድረስ በግምገማ (Pending) ላይ ይቆያል።'
-                            : 'When ON: Listings posted by owners immediately go live on the public front page. When OFF: Listings wait for 1-click admin approval.'}
-                        </p>
-                      </div>
-
-                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(settingsForm.autoApproveListings)}
-                          onChange={(e) =>
-                            setSettingsForm({ ...settingsForm, autoApproveListings: e.target.checked })
-                          }
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer dark:bg-stone-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-stone-600 peer-checked:bg-emerald-600"></div>
-                      </label>
+                  {/* Owner listings are always moderated before publication. */}
+                  <div className="p-4 bg-amber-50/80 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700 rounded-2xl space-y-1.5">
+                    <div className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200">
+                      {currentLang === 'am' ? 'ሁሉም የባለቤት ማስታወቂያዎች በእጅ ይጸድቃሉ' : 'Manual owner approval is always enabled'}
                     </div>
+                    <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                      {currentLang === 'am' ? 'የክፍያ ማስረጃውን ካረጋገጡ በኋላ ብቻ ማስታወቂያው በዋናው ገጽ ላይ ይታያል።' : 'Every owner listing stays hidden until you verify the payment proof and approve it.'}
+                    </p>
                   </div>
 
                   {/* Save Payment & Bank Settings Button */}
