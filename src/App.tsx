@@ -62,6 +62,7 @@ import {
   fetchPropertiesSummaryFromSupabase,
   fetchPropertiesByIdsFromSupabase,
   savePropertyToSupabase,
+  updatePropertyStatusInSupabase,
   deletePropertyFromSupabase,
   fetchUnlockRequestsFromSupabase,
   fetchUnlockRequestsForPhoneFromSupabase,
@@ -611,7 +612,7 @@ export default function App() {
       updatePropertiesState(updatedProps);
       const approvedProp = updatedProps.find((p) => p.id === targetReq.propertyId);
       if (approvedProp) {
-        savePropertyToSupabase(approvedProp).catch(console.warn);
+        updatePropertyStatusInSupabase(targetReq.propertyId, 'active').catch(console.warn);
       }
     } else {
       // User unlock request (5 homes in similar price range)
@@ -747,7 +748,7 @@ export default function App() {
     propertyStatusOverridesRef.current[propertyId] = 'active';
     const updated = properties.map((p) => (p.id === propertyId ? approvedProp : p));
     updatePropertiesState(updated);
-    savePropertyToSupabase(approvedProp).catch(console.warn);
+    updatePropertyStatusInSupabase(propertyId, 'active').catch(console.warn);
 
     // Also update any pending unlock request for this property
     const linkedReq = unlockRequests.find((r) => r.propertyId === propertyId && r.status === 'pending');
@@ -787,7 +788,7 @@ export default function App() {
     updatePropertiesState(updated);
 
     pendingProps.forEach((p) => {
-      savePropertyToSupabase({ ...p, status: 'active' }).catch(console.warn);
+      updatePropertyStatusInSupabase(p.id, 'active').catch(console.warn);
     });
 
     // Also approve associated pending unlock requests
