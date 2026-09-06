@@ -173,6 +173,8 @@ export default function App() {
   // Keep optimistic moderation decisions from being overwritten by a stale refresh.
   const requestStatusOverridesRef = useRef<Record<string, { status: 'approved' | 'rejected'; approvedAt?: string; adminNote?: string }>>({});
   const propertyStatusOverridesRef = useRef<Record<string, 'active' | 'occupied' | 'pending'>>({});
+  // Prevent a double-click or stale admin tab from granting the same request twice.
+  const processedRequestIdsRef = useRef<Set<string>>(new Set());
 
   // Toast / Status Message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -582,7 +584,8 @@ export default function App() {
   const handleApproveRequest = (requestId: string) => {
     const targetReq = unlockRequests.find((r) => r.id === requestId);
     // Approval is one-way: never grant the same request's access twice.
-    if (!targetReq || targetReq.status !== 'pending') return;
+    if (!targetReq || targetReq.status !== 'pending' || processedRequestIdsRef.current.has(requestId)) return;
+    processedRequestIdsRef.current.add(requestId);
 
     const approvedAt = new Date().toISOString();
     requestStatusOverridesRef.current[requestId] = { status: 'approved', approvedAt };
@@ -683,7 +686,8 @@ export default function App() {
   // Admin Reject Request
   const handleRejectRequest = (requestId: string, note?: string) => {
     const targetReq = unlockRequests.find((r) => r.id === requestId);
-    if (!targetReq || targetReq.status !== 'pending') return;
+    if (!targetReq || targetReq.status !== 'pending' || processedRequestIdsRef.current.has(requestId)) return;
+    processedRequestIdsRef.current.add(requestId);
 
     requestStatusOverridesRef.current[requestId] = { status: 'rejected', adminNote: note };
     const rejectedReq: UnlockRequest = {
@@ -747,7 +751,8 @@ export default function App() {
 
     // Also update any pending unlock request for this property
     const linkedReq = unlockRequests.find((r) => r.propertyId === propertyId && r.status === 'pending');
-    if (linkedReq) {
+    if (linkedReq && !processedRequestIdsRef.current.has(linkedReq.id)) {
+      processedRequestIdsRef.current.add(linkedReq.id);
       const linkedApprovedAt = new Date().toISOString();
       requestStatusOverridesRef.current[linkedReq.id] = { status: 'approved', approvedAt: linkedApprovedAt };
       const approvedReq: UnlockRequest = {
@@ -788,6 +793,8 @@ export default function App() {
     // Also approve associated pending unlock requests
     const updatedReqs = unlockRequests.map((r) => {
       if (r.propertyId && pendingProps.some((p) => p.id === r.propertyId) && r.status === 'pending') {
+        if (processedRequestIdsRef.current.has(r.id)) return r;
+        processedRequestIdsRef.current.add(r.id);
         const approvedAt = new Date().toISOString();
         requestStatusOverridesRef.current[r.id] = { status: 'approved', approvedAt };
         const approved: UnlockRequest = {
