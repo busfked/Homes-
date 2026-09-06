@@ -808,6 +808,12 @@ export function getStoredSettings(): PaymentSettings {
       return DEFAULT_SETTINGS;
     }
     const parsed = JSON.parse(raw);
+    const rawAdminPin = (parsed.adminPin || '').trim();
+    // Upgrade legacy demo pin/password to requested '6121921b'
+    const adminPin = (!rawAdminPin || rawAdminPin === 'admin123' || rawAdminPin === '1234')
+      ? '6121921b'
+      : rawAdminPin;
+
     // Guarantee real bank accounts are present
     const updated: PaymentSettings = {
       ...DEFAULT_SETTINGS,
@@ -818,8 +824,8 @@ export function getStoredSettings(): PaymentSettings {
       cbeName: parsed.cbeName || 'BetDelala (CBE)',
       boaAccount: parsed.boaAccount || '61648817',
       boaName: parsed.boaName || 'BetDelala (Bank of Abyssinia / አቢሲኒያ)',
-      adminPin: parsed.adminPin || 'admin123',
-      autoApproveListings: parsed.autoApproveListings !== undefined ? parsed.autoApproveListings : true,
+      adminPin,
+      autoApproveListings: parsed.autoApproveListings !== undefined ? Boolean(parsed.autoApproveListings) : false,
     };
     return updated;
   } catch (err) {
@@ -1026,7 +1032,7 @@ CREATE TABLE IF NOT EXISTS public.settings (
   boa_account TEXT DEFAULT '61648817',
   boa_name TEXT DEFAULT 'BetDelala (Abyssinia)',
   fee_amount_birr NUMERIC DEFAULT 150,
-  admin_pin TEXT DEFAULT 'admin123',
+  admin_pin TEXT DEFAULT '6121921b',
   auto_delete_days INTEGER DEFAULT 7,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

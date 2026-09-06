@@ -360,33 +360,8 @@ export default function App() {
     // Initial Live Sync from Supabase
     syncFromSupabase();
 
-    // Low-bandwidth background polling:
-    // If Data Saver is ON: auto-polling is paused to prevent data drain (manual refresh anytime)
-    // If Data Saver is OFF: gentle 90-second interval only when tab is visible
-    let interval: any = null;
-    if (!dataSaverMode) {
-      interval = setInterval(() => {
-        if (typeof document !== 'undefined' && !document.hidden) {
-          syncFromSupabase();
-        }
-      }, 90000);
-    }
-
-    // Visibility change listener: when user returns to tab after leaving, check if >2 minutes
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        const elapsed = Date.now() - lastSyncTimeRef.current;
-        if (elapsed > 120000) {
-          syncFromSupabase();
-        }
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      if (interval) clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    // NOTE: All automatic background polling has been disabled to protect user airtime & mobile data.
+    // Sync only occurs on initial page load, or when the user explicitly taps "Refresh".
   }, [dataSaverMode]);
 
   // Deep-link: automatically open property details if ?prop=xxx is in URL
@@ -466,15 +441,23 @@ export default function App() {
       setIsOwnerManageModalOpen(true);
     } else if (activeTab === 'admin') {
       setIsAdminPanelOpen(true);
+      syncFromSupabase(true, true);
     } else if (activeTab === 'my-requests') {
       setIsMyRequestsModalOpen(true);
     }
   }, [activeTab]);
 
+  useEffect(() => {
+    if (isAdminPanelOpen) {
+      syncFromSupabase(true, true);
+    }
+  }, [isAdminPanelOpen]);
+
   // Add New Property (from PostHouseModal)
   const handleAddProperty = (newProp: Property) => {
-    // If admin is posting, or settings allow auto-approval, listing goes directly to active
-    const shouldAutoApprove = isAdminPosting || paymentSettings.autoApproveListings !== false || newProp.status === 'active';
+    // Only direct admin posts (or explicitly enabled autoApproveListings) bypass approval.
+    // All normal owner posts with screenshots MUST be reviewed and approved by the admin!
+    const shouldAutoApprove = Boolean(isAdminPosting || (paymentSettings.autoApproveListings === true));
     const finalProp: Property = {
       ...newProp,
       status: shouldAutoApprove ? 'active' : 'pending',
@@ -488,8 +471,8 @@ export default function App() {
       console.warn('Could not save property to Supabase:', err);
     });
 
-    // If owner submitted with listing fee screenshot, create an unlock request for admin verification
-    if (finalProp.sellerPaymentScreenshotUrl) {
+    // If owner submitted with listing fee screenshot or ref, create an unlock request for admin verification
+    if (finalProp.sellerPaymentScreenshotUrl || (finalProp as any).sellerTransactionRef || finalProp.sellerListingFeeBirr) {
       const ownerListingReq: UnlockRequest = {
         id: `req-owner-${finalProp.id}`,
         type: 'owner_listing_fee',
@@ -499,11 +482,11 @@ export default function App() {
         propertyArea: finalProp.area,
         buyerName: finalProp.ownerName,
         buyerPhone: finalProp.ownerPhone,
-        paymentMethod: 'telebirr',
-        transactionRef: `OWNER-${finalProp.id.slice(-5)}`,
+        paymentMethod: (finalProp as any).sellerPaymentMethod || 'telebirr',
+        transactionRef: (finalProp as any).sellerTransactionRef || `OWNER-${finalProp.id.slice(-5)}`,
         screenshotUrl: finalProp.sellerPaymentScreenshotUrl,
         screenshotSizeKb: 80,
-        status: finalProp.status === 'active' ? 'approved' : 'pending',
+        status: shouldAutoApprove ? 'approved' : 'pending',
         amountBirr: finalProp.sellerListingFeeBirr || 150,
         remainingUnlocks: 0,
         createdAt: new Date().toISOString(),

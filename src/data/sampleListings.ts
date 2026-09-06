@@ -13,9 +13,9 @@ export const DEFAULT_SETTINGS: PaymentSettings = {
   feeAmountSaleBirr: 500, // 500 Birr for unlocking sale properties
   sellerListingFeeBirr: 500, // 500 Birr for owners posting a sale listing (rent is 0 / free)
   feeAmountBirr: 100,
-  adminPin: 'admin123',
+  adminPin: '6121921b',
   autoDeleteDays: 7,
-  autoApproveListings: true, // Default to true so owner posts appear on the front page immediately!
+  autoApproveListings: false, // Default to false: all owner listings require admin receipt/screenshot approval before going live!
 };
 
 // Clean real platform state: No demo accounts, ready for real listings

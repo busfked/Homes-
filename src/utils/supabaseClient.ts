@@ -234,8 +234,7 @@ export async function savePropertyToSupabase(prop: Property): Promise<boolean> {
       area_am: prop.areaAm || prop.area,
       sub_city: prop.subCity || 'Addis Ababa',
       exact_landmark: prop.exactLandmark || '',
-      property_type: prop.propertyType || 'residential',
-      category_type: (prop as any).categoryType || 'apartment',
+      property_type: prop.propertyType || (prop as any).carType || (prop as any).machineryType || 'residential',
       listing_type: prop.listingType || 'rent',
       price: Number(prop.price) || 0,
       price_period: prop.pricePeriod || 'month',
@@ -346,14 +345,18 @@ export async function wipeAllTestDataFromSupabase(): Promise<{ success: boolean;
 // Unlock Requests CRUD Operations
 // ----------------------------------------------------------------------
 
+// Lightweight field list to prevent downloading hundreds of KB of base64 screenshots in list view
+const UNLOCK_REQUEST_LIST_FIELDS = 'id, request_type, property_id, property_title, property_area, package_tier_id, package_tier_name, buyer_name, buyer_phone, payment_method, transaction_ref, screenshot_size_kb, status, amount_birr, remaining_unlocks, created_at, approved_at, admin_note';
+
 export async function fetchUnlockRequestsFromSupabase(): Promise<UnlockRequest[] | null> {
   const supabase = getSupabase();
   if (!supabase) return null;
 
   try {
+    // Ultra-lightweight: omits screenshot_url until explicitly clicked (cuts list download from 1.2MB to ~4KB)
     const { data, error } = await supabase
       .from('unlock_requests')
-      .select('*')
+      .select(UNLOCK_REQUEST_LIST_FIELDS)
       .order('created_at', { ascending: false });
 
     if (error || !data) return null;
@@ -371,7 +374,7 @@ export async function fetchUnlockRequestsFromSupabase(): Promise<UnlockRequest[]
       buyerPhone: row.buyer_phone,
       paymentMethod: row.payment_method || 'telebirr',
       transactionRef: row.transaction_ref || '',
-      screenshotUrl: row.screenshot_url,
+      screenshotUrl: undefined, // Fetched on demand when viewing receipt
       screenshotSizeKb: row.screenshot_size_kb,
       status: row.status || 'pending',
       amountBirr: Number(row.amount_birr) || 150,
@@ -382,6 +385,28 @@ export async function fetchUnlockRequestsFromSupabase(): Promise<UnlockRequest[]
     }));
   } catch (err) {
     console.warn('fetchUnlockRequestsFromSupabase error:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch a single receipt screenshot on-demand only when admin taps to view it.
+ */
+export async function fetchUnlockRequestScreenshot(requestId: string): Promise<string | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('unlock_requests')
+      .select('screenshot_url')
+      .eq('id', requestId)
+      .single();
+
+    if (error || !data) return null;
+    return data.screenshot_url || null;
+  } catch (err) {
+    console.warn('fetchUnlockRequestScreenshot error:', err);
     return null;
   }
 }
@@ -399,7 +424,7 @@ export async function fetchUnlockRequestsForPhoneFromSupabase(phone: string): Pr
   try {
     const { data, error } = await supabase
       .from('unlock_requests')
-      .select('*')
+      .select(UNLOCK_REQUEST_LIST_FIELDS)
       .eq('buyer_phone', cleanPhone)
       .order('created_at', { ascending: false });
 
@@ -418,7 +443,7 @@ export async function fetchUnlockRequestsForPhoneFromSupabase(phone: string): Pr
       buyerPhone: row.buyer_phone,
       paymentMethod: row.payment_method || 'telebirr',
       transactionRef: row.transaction_ref || '',
-      screenshotUrl: row.screenshot_url,
+      screenshotUrl: undefined,
       screenshotSizeKb: row.screenshot_size_kb,
       status: row.status || 'pending',
       amountBirr: Number(row.amount_birr) || 150,

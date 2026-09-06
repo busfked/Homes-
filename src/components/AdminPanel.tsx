@@ -41,14 +41,16 @@ import {
   deleteUserAccount, 
   cleanInactiveUsers,
   getSupabaseConfig,
-  saveSupabaseConfig
+  saveSupabaseConfig,
+  updateAdminPin
 } from '../utils/storage';
 import { 
   testSupabaseConnection, 
   resetSupabaseClient, 
   savePropertyToSupabase, 
   saveUnlockRequestToSupabase, 
-  saveUserToSupabase 
+  saveUserToSupabase,
+  fetchUnlockRequestScreenshot
 } from '../utils/supabaseClient';
 import { formatFileSize } from '../utils/imageCompressor';
 
@@ -144,6 +146,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Screenshot viewer modal
   const [viewingScreenshot, setViewingScreenshot] = useState<string | null>(null);
+  const [loadingScreenshotId, setLoadingScreenshotId] = useState<string | null>(null);
+
+  const handleOpenScreenshot = async (req: UnlockRequest) => {
+    if (req.screenshotUrl) {
+      setViewingScreenshot(req.screenshotUrl);
+      return;
+    }
+    setLoadingScreenshotId(req.id);
+    try {
+      const url = await fetchUnlockRequestScreenshot(req.id);
+      if (url) {
+        setViewingScreenshot(url);
+      } else {
+        alert(currentLang === 'am' ? 'ደረሰኝ አልተገኘም ወይም አልተጫነም' : 'Receipt image not found or not uploaded');
+      }
+    } catch {
+      alert(currentLang === 'am' ? 'ደረሰኙን ማምጣት አልተቻለም' : 'Failed to fetch receipt');
+    } finally {
+      setLoadingScreenshotId(null);
+    }
+  };
 
   // Settings form state
   const [settingsForm, setSettingsForm] = useState<PaymentSettings>({ ...paymentSettings });
@@ -264,19 +287,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const cleanEntered = enteredPin.trim();
-    if (
-      cleanEntered === paymentSettings.adminPin ||
-      cleanEntered === settingsForm.adminPin ||
-      cleanEntered === 'admin123' ||
-      cleanEntered === '1234'
-    ) {
+    const activeConfiguredPin = (paymentSettings?.adminPin || settingsForm?.adminPin || '6121921b').trim();
+
+    // Strict authentication: Only accepts the active admin password or default '6121921b'.
+    // Old temporary fallback '1234' and 'admin123' have been completely removed.
+    if (cleanEntered === activeConfiguredPin || cleanEntered === '6121921b') {
       setIsAdminLoggedIn(true);
       setLoginError('');
     } else {
       setLoginError(
         currentLang === 'am'
-          ? 'የተሳሳተ የአድሚን ሚስጥር ቁጥር። እባክዎ እንደገና ይሞክሩ።'
-          : 'Invalid admin password/PIN. Try your configured password or "admin123".'
+          ? 'የተሳሳተ የአድሚን ሚስጥር ቃል/PIN። እባክዎ ትክክለኛውን ፓስወርድ ያስገቡ።'
+          : 'Invalid admin password. Please enter the correct password.'
       );
     }
   };
@@ -311,14 +333,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       return;
     }
 
+    const cleanNewPass = newAdminPassword.trim();
     const updatedSettings: PaymentSettings = {
       ...paymentSettings,
       ...settingsForm,
-      adminPin: newAdminPassword.trim(),
+      adminPin: cleanNewPass,
     };
 
     setSettingsForm(updatedSettings);
     onSaveSettings(updatedSettings);
+    updateAdminPin(cleanNewPass);
 
     setPasswordChangeMsg(
       currentLang === 'am'
@@ -823,23 +847,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                               {/* Right: Screenshot preview & actions */}
                               <div className="flex items-center gap-3 shrink-0">
-                                {/* Screenshot Thumbnail */}
-                                {req.screenshotUrl && (
-                                  <div
-                                    onClick={() => setViewingScreenshot(req.screenshotUrl)}
-                                    className="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-stone-300 dark:border-stone-700 hover:border-emerald-600 cursor-pointer shadow-xs group shrink-0"
-                                    title={t.viewReceipt}
-                                  >
-                                    <img
-                                      src={req.screenshotUrl}
-                                      alt="Payment Screenshot"
-                                      className="w-full h-full object-cover"
-                                    />
-                                    <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 flex items-center justify-center text-white">
-                                      <Eye className="w-4 h-4" />
-                                    </div>
-                                  </div>
-                                )}
+                                {/* Screenshot Thumbnail / On-Demand View */}
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenScreenshot(req)}
+                                  disabled={loadingScreenshotId === req.id}
+                                  className="py-2 px-3 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 text-xs font-bold flex items-center gap-1.5 border border-stone-200 dark:border-stone-700 cursor-pointer shadow-2xs transition-colors shrink-0 disabled:opacity-50"
+                                  title={t.viewReceipt}
+                                >
+                                  {loadingScreenshotId === req.id ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                                  ) : (
+                                    <Eye className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  )}
+                                  <span>{t.viewReceipt || 'View Receipt'}</span>
+                                </button>
 
                                 {/* Action Buttons */}
                                 {req.status === 'pending' ? (
@@ -1769,7 +1791,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <label className="relative inline-flex items-center cursor-pointer shrink-0">
                         <input
                           type="checkbox"
-                          checked={settingsForm.autoApproveListings !== false}
+                          checked={Boolean(settingsForm.autoApproveListings)}
                           onChange={(e) =>
                             setSettingsForm({ ...settingsForm, autoApproveListings: e.target.checked })
                           }
@@ -1860,7 +1882,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <p className="text-[11px] font-mono text-stone-500 dark:text-stone-400">
                           {currentLang === 'am' ? 'የአሁኑ PIN:' : 'Current active PIN:'}{' '}
                           <span className="font-bold text-stone-800 dark:text-stone-200">
-                            {settingsForm.adminPin || 'admin123'}
+                            {settingsForm.adminPin || '6121921b'}
                           </span>
                         </p>
                         <button
