@@ -142,6 +142,7 @@ export interface PaymentSettings {
   feeAmountBirr?: number; // legacy fallback
   adminPin: string;
   autoDeleteDays: number;
+  autoApproveListings?: boolean; // When true, owner listings appear on front page immediately
 }
 
 export interface CompressionResult {

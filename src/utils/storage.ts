@@ -819,6 +819,7 @@ export function getStoredSettings(): PaymentSettings {
       boaAccount: parsed.boaAccount || '61648817',
       boaName: parsed.boaName || 'BetDelala (Bank of Abyssinia / አቢሲኒያ)',
       adminPin: parsed.adminPin || 'admin123',
+      autoApproveListings: parsed.autoApproveListings !== undefined ? parsed.autoApproveListings : true,
     };
     return updated;
   } catch (err) {

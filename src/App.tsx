@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Building2, 
   PlusCircle, 
@@ -12,7 +12,9 @@ import {
   Clock, 
   CheckCircle2, 
   AlertTriangle,
-  Share2
+  Share2,
+  RefreshCw,
+  Zap
 } from 'lucide-react';
 import { 
   Property, 
@@ -57,11 +59,15 @@ import {
 } from './utils/storage';
 import {
   fetchPropertiesFromSupabase,
+  fetchPropertiesSummaryFromSupabase,
+  fetchPropertiesByIdsFromSupabase,
   savePropertyToSupabase,
   deletePropertyFromSupabase,
   fetchUnlockRequestsFromSupabase,
+  fetchUnlockRequestsForPhoneFromSupabase,
   saveUnlockRequestToSupabase,
   fetchUsersFromSupabase,
+  fetchUserByPhoneFromSupabase,
   saveUserToSupabase,
   saveUserUnlockedPropertyToSupabase
 } from './utils/supabaseClient';
@@ -157,6 +163,13 @@ export default function App() {
   const [prefilledOwnerPhone, setPrefilledOwnerPhone] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Data-Saver Mode State (Defaults to ON to protect mobile internet card / airtime)
+  const [dataSaverMode, setDataSaverMode] = useState<boolean>(() => {
+    const stored = localStorage.getItem('bese_data_saver');
+    return stored === null ? true : stored === 'true';
+  });
+  const lastSyncTimeRef = useRef<number>(0);
+
   // Toast / Status Message
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -165,74 +178,146 @@ export default function App() {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  // 2-Way Live Supabase Synchronization
-  const syncFromSupabase = async () => {
+  const toggleDataSaverMode = () => {
+    setDataSaverMode((prev) => {
+      const next = !prev;
+      localStorage.setItem('bese_data_saver', String(next));
+      showToast(
+        next
+          ? (currentLang === 'am' ? 'ዳታ ቆጣቢ ሞድ በርቷል • የሞባይል ካርድዎን ይቆጥባል' : 'Data Saver Mode ON • Conserves mobile airtime')
+          : (currentLang === 'am' ? 'ዳታ ቆጣቢ ሞድ ጠፍቷል' : 'Data Saver Mode OFF')
+      );
+      return next;
+    });
+  };
+
+  // Ultra-Low-Bandwidth 2-Way Live Supabase Synchronization
+  const syncFromSupabase = async (forceFull = false, adminDataOnly = false) => {
+    // If tab is in background / locked and this is not a user-initiated force sync, skip to save data
+    if (typeof document !== 'undefined' && document.hidden && !forceFull) {
+      return;
+    }
+
+    if (isSyncing) return;
+
     try {
       setIsSyncing(true);
-      const [remoteProps, remoteReqs, remoteUsers] = await Promise.all([
-        fetchPropertiesFromSupabase(),
-        fetchUnlockRequestsFromSupabase(),
-        fetchUsersFromSupabase()
-      ]);
 
-      if (remoteProps && Array.isArray(remoteProps) && remoteProps.length > 0) {
-        setProperties((prev) => {
-          const remoteMap = new Map(remoteProps.map((p) => [p.id, p]));
-          const merged = [...remoteProps];
-          for (const localP of prev) {
-            if (!remoteMap.has(localP.id)) {
-              merged.push(localP);
-              // push this local property to Supabase in background
-              savePropertyToSupabase(localP).catch(console.warn);
+      // 1. PROPERTIES SYNC (Ultra-low bandwidth check):
+      // Only downloads ~0.5 KB of IDs and status rather than multi-megabytes of base64 photos!
+      const summary = await fetchPropertiesSummaryFromSupabase();
+
+      if (summary && Array.isArray(summary) && summary.length > 0) {
+        setProperties((prevProps) => {
+          const localMap = new Map(prevProps.map((p) => [p.id, p]));
+          const missingRemoteIds: string[] = [];
+          let statusChangedCount = 0;
+
+          const updatedProps = prevProps.map((localP) => {
+            const remoteItem = summary.find((s) => s.id === localP.id);
+            if (remoteItem && remoteItem.status !== localP.status) {
+              statusChangedCount++;
+              return {
+                ...localP,
+                status: remoteItem.status,
+                unlockCount: remoteItem.unlock_count ?? localP.unlockCount,
+                viewCount: remoteItem.view_count ?? localP.viewCount,
+              };
+            }
+            return localP;
+          });
+
+          for (const sumItem of summary) {
+            if (!localMap.has(sumItem.id)) {
+              missingRemoteIds.push(sumItem.id);
             }
           }
-          saveProperties(merged);
-          return merged;
-        });
-      }
 
-      if (remoteReqs && Array.isArray(remoteReqs)) {
-        setUnlockRequests((prev) => {
-          const remoteMap = new Map(remoteReqs.map((r) => [r.id, r]));
-          const merged = [...remoteReqs];
-          for (const localR of prev) {
-            if (!remoteMap.has(localR.id)) {
-              merged.push(localR);
-              saveUnlockRequestToSupabase(localR).catch(console.warn);
+          // If there are brand-new properties not in local storage, fetch ONLY those missing ones
+          if (missingRemoteIds.length > 0) {
+            fetchPropertiesByIdsFromSupabase(missingRemoteIds)
+              .then((newItems) => {
+                if (newItems && newItems.length > 0) {
+                  setProperties((current) => {
+                    const currMap = new Map(current.map((c) => [c.id, c]));
+                    const combined = [...current];
+                    for (const ni of newItems) {
+                      if (!currMap.has(ni.id)) {
+                        combined.unshift(ni);
+                      }
+                    }
+                    saveProperties(combined);
+                    return combined;
+                  });
+                }
+              })
+              .catch(console.warn);
+          }
+
+          if (statusChangedCount > 0) {
+            saveProperties(updatedProps);
+            return updatedProps;
+          }
+
+          return prevProps;
+        });
+      } else if (forceFull || properties.length === 0) {
+        // Fallback to full fetch only on initial cold boot or manual refresh
+        const fullRemoteProps = await fetchPropertiesFromSupabase();
+        if (fullRemoteProps && Array.isArray(fullRemoteProps) && fullRemoteProps.length > 0) {
+          setProperties((prev) => {
+            const remoteMap = new Map(fullRemoteProps.map((p) => [p.id, p]));
+            const merged = [...fullRemoteProps];
+            for (const localP of prev) {
+              if (!remoteMap.has(localP.id)) {
+                merged.push(localP);
+                savePropertyToSupabase(localP).catch(console.warn);
+              }
             }
-          }
-          saveUnlockRequests(merged);
-          return merged;
-        });
-      }
-
-      if (remoteUsers && Array.isArray(remoteUsers) && remoteUsers.length > 0) {
-        const localUsers = getStoredUsers();
-        const remoteUserMap = new Map(remoteUsers.map((u) => [u.phone.replace(/[\s-]/g, ''), u]));
-        const mergedUsers = [...remoteUsers];
-        for (const lu of localUsers) {
-          const clean = lu.phone.replace(/[\s-]/g, '');
-          if (!remoteUserMap.has(clean)) {
-            mergedUsers.push(lu);
-            saveUserToSupabase(lu).catch(console.warn);
-          }
-        }
-        saveUsers(mergedUsers);
-
-        // Update active session if credentials match
-        const active = getActiveUserSession();
-        if (active) {
-          const found = mergedUsers.find(
-            (u) => u.phone.replace(/[\s-]/g, '') === active.phone.replace(/[\s-]/g, '')
-          );
-          if (found) {
-            saveActiveUserSession(found);
-            setCurrentUser(found);
-          }
+            saveProperties(merged);
+            return merged;
+          });
         }
       }
+
+      // 2. UNLOCK REQUESTS: Only download screenshots if user is viewing Admin or My Requests!
+      // Eliminates downloading other people's receipts for standard browsing visitors.
+      if (activeTab === 'admin' || adminDataOnly) {
+        const remoteReqs = await fetchUnlockRequestsFromSupabase();
+        if (remoteReqs && Array.isArray(remoteReqs)) {
+          setUnlockRequests(remoteReqs);
+          saveUnlockRequests(remoteReqs);
+        }
+      } else if (activeTab === 'my-requests' && userPhone) {
+        const myReqs = await fetchUnlockRequestsForPhoneFromSupabase(userPhone);
+        if (myReqs && Array.isArray(myReqs)) {
+          setUnlockRequests((prev) => {
+            const cleanPhone = userPhone.replace(/[\s-]/g, '');
+            const otherReqs = prev.filter((r) => r.buyerPhone?.replace(/[\s-]/g, '') !== cleanPhone);
+            const merged = [...myReqs, ...otherReqs];
+            saveUnlockRequests(merged);
+            return merged;
+          });
+        }
+      }
+
+      // 3. USERS: Only download full user database if Admin panel is open
+      if (activeTab === 'admin' || adminDataOnly) {
+        const remoteUsers = await fetchUsersFromSupabase();
+        if (remoteUsers && Array.isArray(remoteUsers) && remoteUsers.length > 0) {
+          saveUsers(remoteUsers);
+        }
+      } else if (currentUser?.phone) {
+        const updatedSelf = await fetchUserByPhoneFromSupabase(currentUser.phone);
+        if (updatedSelf) {
+          setCurrentUser(updatedSelf);
+          saveActiveUserSession(updatedSelf);
+        }
+      }
+
+      lastSyncTimeRef.current = Date.now();
     } catch (err) {
-      console.warn('Supabase sync notice:', err);
+      console.warn('Low-bandwidth sync notice:', err);
     } finally {
       setIsSyncing(false);
     }
@@ -275,13 +360,34 @@ export default function App() {
     // Initial Live Sync from Supabase
     syncFromSupabase();
 
-    // Regular polling every 10 seconds so new submissions/payments from any device appear immediately
-    const interval = setInterval(() => {
-      syncFromSupabase();
-    }, 10000);
+    // Low-bandwidth background polling:
+    // If Data Saver is ON: auto-polling is paused to prevent data drain (manual refresh anytime)
+    // If Data Saver is OFF: gentle 90-second interval only when tab is visible
+    let interval: any = null;
+    if (!dataSaverMode) {
+      interval = setInterval(() => {
+        if (typeof document !== 'undefined' && !document.hidden) {
+          syncFromSupabase();
+        }
+      }, 90000);
+    }
 
-    return () => clearInterval(interval);
-  }, []);
+    // Visibility change listener: when user returns to tab after leaving, check if >2 minutes
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        const elapsed = Date.now() - lastSyncTimeRef.current;
+        if (elapsed > 120000) {
+          syncFromSupabase();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (interval) clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [dataSaverMode]);
 
   // Deep-link: automatically open property details if ?prop=xxx is in URL
   useEffect(() => {
@@ -367,10 +473,11 @@ export default function App() {
 
   // Add New Property (from PostHouseModal)
   const handleAddProperty = (newProp: Property) => {
-    // If admin is posting, bypass pending status directly to active
+    // If admin is posting, or settings allow auto-approval, listing goes directly to active
+    const shouldAutoApprove = isAdminPosting || paymentSettings.autoApproveListings !== false || newProp.status === 'active';
     const finalProp: Property = {
       ...newProp,
-      status: isAdminPosting || newProp.status === 'active' ? 'active' : 'pending',
+      status: shouldAutoApprove ? 'active' : 'pending',
     };
 
     const updated = [finalProp, ...properties.filter((p) => p.id !== finalProp.id)];
@@ -382,7 +489,7 @@ export default function App() {
     });
 
     // If owner submitted with listing fee screenshot, create an unlock request for admin verification
-    if (finalProp.status === 'pending' && finalProp.sellerPaymentScreenshotUrl) {
+    if (finalProp.sellerPaymentScreenshotUrl) {
       const ownerListingReq: UnlockRequest = {
         id: `req-owner-${finalProp.id}`,
         type: 'owner_listing_fee',
@@ -396,7 +503,7 @@ export default function App() {
         transactionRef: `OWNER-${finalProp.id.slice(-5)}`,
         screenshotUrl: finalProp.sellerPaymentScreenshotUrl,
         screenshotSizeKb: 80,
-        status: 'pending',
+        status: finalProp.status === 'active' ? 'approved' : 'pending',
         amountBirr: finalProp.sellerListingFeeBirr || 150,
         remainingUnlocks: 0,
         createdAt: new Date().toISOString(),
@@ -409,11 +516,11 @@ export default function App() {
     showToast(
       currentLang === 'am'
         ? (finalProp.status === 'active'
-            ? 'ቤቱ በቀጥታ ወደ ዝርዝሩ ተለጥፏል!'
-            : 'የቤቱ መረጃ እና ክፍያ ተልኳል! አድሚኑ ሲፈትሸው ወደ ዝርዝር ይገባል።')
+            ? 'ማስታወቂያው በቀጥታ ወደ ገበያው ተለጥፏል! አሁን በዋናው ገጽ ላይ ይታያል።'
+            : 'የማስታወቂያው መረጃ ተልኳል! አድሚኑ ሲያረጋግጥ በዋናው ገጽ ላይ ይታያል።')
         : (finalProp.status === 'active'
-            ? 'Property posted directly to live listings!'
-            : 'House listing submitted! Will be live once admin verifies payment.')
+            ? 'Your listing is now LIVE on the front page!'
+            : 'Listing submitted! It will appear live once admin approves it.')
     );
     setIsAdminPosting(false);
     setPrefilledOwnerPhone('');
@@ -577,6 +684,84 @@ export default function App() {
     );
   };
 
+  // Admin Toggle Property Status (e.g. active <-> occupied)
+  const handleTogglePropertyStatus = (propertyId: string, newStatus: 'active' | 'occupied') => {
+    const targetProp = properties.find((p) => p.id === propertyId);
+    if (!targetProp) return;
+    const updatedProp: Property = { ...targetProp, status: newStatus };
+    const updated = properties.map((p) => (p.id === propertyId ? updatedProp : p));
+    updatePropertiesState(updated);
+    savePropertyToSupabase(updatedProp).catch(console.warn);
+    showToast(
+      currentLang === 'am'
+        ? (newStatus === 'active' ? 'ንብረቱ ወደ ገበያ ተመልሷል (Available)!' : 'ንብረቱ ተከራይቷል ተብሎ ተዘግቷል')
+        : (newStatus === 'active' ? 'Listing restored to available!' : 'Listing marked as occupied/rented')
+    );
+  };
+
+  // Admin Approve a single pending property
+  const handleApproveProperty = (propertyId: string) => {
+    const targetProp = properties.find((p) => p.id === propertyId);
+    if (!targetProp) return;
+    const approvedProp: Property = { ...targetProp, status: 'active' };
+    const updated = properties.map((p) => (p.id === propertyId ? approvedProp : p));
+    updatePropertiesState(updated);
+    savePropertyToSupabase(approvedProp).catch(console.warn);
+
+    // Also update any pending unlock request for this property
+    const linkedReq = unlockRequests.find((r) => r.propertyId === propertyId && r.status === 'pending');
+    if (linkedReq) {
+      const approvedReq: UnlockRequest = {
+        ...linkedReq,
+        status: 'approved',
+        approvedAt: new Date().toISOString(),
+      };
+      const updatedReqs = unlockRequests.map((r) => (r.id === linkedReq.id ? approvedReq : r));
+      updateRequestsState(updatedReqs);
+      saveUnlockRequestToSupabase(approvedReq).catch(console.warn);
+    }
+
+    showToast(
+      currentLang === 'am'
+        ? `"${targetProp.title}" ጸድቋል! አሁን በዋናው ድረ-ገጽ ላይ ይገኛል።`
+        : `"${targetProp.title}" approved! Now live on front page.`
+    );
+  };
+
+  // Admin Approve all pending properties in 1 click
+  const handleApproveAllPendingProperties = () => {
+    const pendingProps = properties.filter((p) => p.status === 'pending');
+    if (pendingProps.length === 0) return;
+
+    const updated = properties.map((p) => (p.status === 'pending' ? { ...p, status: 'active' as const } : p));
+    updatePropertiesState(updated);
+
+    pendingProps.forEach((p) => {
+      savePropertyToSupabase({ ...p, status: 'active' }).catch(console.warn);
+    });
+
+    // Also approve associated pending unlock requests
+    const updatedReqs = unlockRequests.map((r) => {
+      if (r.propertyId && pendingProps.some((p) => p.id === r.propertyId) && r.status === 'pending') {
+        const approved: UnlockRequest = {
+          ...r,
+          status: 'approved',
+          approvedAt: new Date().toISOString(),
+        };
+        saveUnlockRequestToSupabase(approved).catch(console.warn);
+        return approved;
+      }
+      return r;
+    });
+    updateRequestsState(updatedReqs);
+
+    showToast(
+      currentLang === 'am'
+        ? `ሁሉም ${pendingProps.length} ማረጋገጫ የሚጠብቁ ቤቶች ጸድቀው በቀጥታ ተለጥፈዋል!`
+        : `All ${pendingProps.length} pending listings approved and published live!`
+    );
+  };
+
   // Owner "Still Available (Renew 7 Days)" button
   const handleRenewProperty = (propertyId: string) => {
     const newExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -728,6 +913,13 @@ export default function App() {
         currentUser={currentUser}
         onOpenUserPhoneModal={() => setIsMyRequestsModalOpen(true)}
         onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
+        dataSaverMode={dataSaverMode}
+        onToggleDataSaver={toggleDataSaverMode}
+        isSyncing={isSyncing}
+        onManualRefresh={() => {
+          showToast(currentLang === 'am' ? 'ዝርዝሮችን በማደስ ላይ...' : 'Refreshing listings...');
+          syncFromSupabase(true);
+        }}
       />
 
       {/* Main Content Area */}
@@ -781,6 +973,18 @@ export default function App() {
 
             {/* Quick Action Badges */}
             <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <button
+                onClick={() => {
+                  showToast(currentLang === 'am' ? 'ዝርዝሮችን በማደስ ላይ...' : 'Refreshing listings...');
+                  syncFromSupabase(true);
+                }}
+                disabled={isSyncing}
+                className="px-2.5 py-1.5 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer border border-stone-200 dark:border-stone-700 disabled:opacity-50"
+                title={isSyncing ? t.syncing : t.refreshListings}
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? t.syncing : t.refreshListings}</span>
+              </button>
               <button
                 onClick={handleOpenShareSearch}
                 className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/70 dark:hover:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer border border-emerald-300/50 dark:border-emerald-800 shadow-2xs font-bold"
@@ -1055,6 +1259,9 @@ export default function App() {
         onUnbanPhone={handleUnbanPhone}
         onResolveReport={handleResolveReport}
         onManualSync={syncFromSupabase}
+        onTogglePropertyStatus={handleTogglePropertyStatus}
+        onApproveProperty={handleApproveProperty}
+        onApproveAllPendingProperties={handleApproveAllPendingProperties}
         onOpenPostPropertyAsAdmin={() => {
           setIsAdminPanelOpen(false);
           setIsAdminPosting(true);

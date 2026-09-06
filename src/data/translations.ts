@@ -296,6 +296,14 @@ export const translations = {
     loading: 'እባክዎ ይጠብቁ...',
     success: 'ተሳክቷል!',
     error: 'ስህተት ተከስቷል!',
+
+    // Data Saver
+    dataSaver: 'ዳታ ቆጣቢ',
+    dataSaverOn: 'ዳታ ቆጣቢ በርቷል (የኢንተርኔት ካርድ ይቆጥባል)',
+    dataSaverOff: 'ዳታ ቆጣቢ ጠፍቷል',
+    dataSaverDesc: 'በዳታ ቆጣቢ ሞድ የጀርባ አውቶማቲክ ዳውንሎድ ይቆማል፤ የሞባይል ካርድዎን ይቆጥባል።',
+    refreshListings: 'አድስ',
+    syncing: 'በማደስ ላይ...',
   },
   en: {
     // Header & Navigation
@@ -594,5 +602,13 @@ export const translations = {
     loading: 'Please wait...',
     success: 'Success!',
     error: 'An error occurred!',
+
+    // Data Saver
+    dataSaver: 'Data Saver',
+    dataSaverOn: 'Data Saver ON (Saves Mobile Data)',
+    dataSaverOff: 'Data Saver OFF',
+    dataSaverDesc: 'In Data Saver mode, automatic background sync is paused to preserve mobile airtime.',
+    refreshListings: 'Refresh',
+    syncing: 'Updating...',
   },
 };

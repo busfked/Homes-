@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS: PaymentSettings = {
   feeAmountBirr: 100,
   adminPin: 'admin123',
   autoDeleteDays: 7,
+  autoApproveListings: true, // Default to true so owner posts appear on the front page immediately!
 };
 
 // Clean real platform state: No demo accounts, ready for real listings

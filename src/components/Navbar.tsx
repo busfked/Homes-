@@ -11,7 +11,9 @@ import {
   Sun, 
   Moon,
   User,
-  Sparkles
+  Sparkles,
+  Zap,
+  RefreshCw
 } from 'lucide-react';
 import { Language, Theme, UserAccount } from '../types';
 import { translations } from '../data/translations';
@@ -28,6 +30,10 @@ interface NavbarProps {
   currentUser?: UserAccount | null;
   onOpenUserPhoneModal: () => void;
   onOpenUserAuthModal?: () => void;
+  dataSaverMode?: boolean;
+  onToggleDataSaver?: () => void;
+  isSyncing?: boolean;
+  onManualRefresh?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -42,6 +48,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentUser,
   onOpenUserPhoneModal,
   onOpenUserAuthModal,
+  dataSaverMode = true,
+  onToggleDataSaver,
+  isSyncing = false,
+  onManualRefresh,
 }) => {
   const t = translations[currentLang];
 
@@ -53,8 +63,12 @@ export const Navbar: React.FC<NavbarProps> = ({
           <span className="inline-block w-2 h-2 rounded-full bg-emerald-200 animate-pulse"></span>
           <span className="truncate">
             {currentLang === 'am'
-              ? '🇪🇹 ቤሴ መፍትሄ • ቤቶች • መኪኖች • ማሽነሪዎች • የባለቤቱን ስልክ በቀጥታ ያግኙ'
-              : '🇪🇹 Bese Solutions • Homes • Cars • Machineries • Direct Verified Owner Brokerage'}
+              ? (dataSaverMode
+                  ? '🇪🇹 ቤሴ መፍትሄ • ⚡ ዳታ ቆጣቢ በርቷል (የሞባይል ካርድዎን ይቆጥባል) • የባለቤቱን ስልክ በቀጥታ ያግኙ'
+                  : '🇪🇹 ቤሴ መፍትሄ • ቤቶች • መኪኖች • ማሽነሪዎች • የባለቤቱን ስልክ በቀጥታ ያግኙ')
+              : (dataSaverMode
+                  ? '🇪🇹 Bese Solutions • ⚡ Data Saver Active (Conserves Mobile Airtime) • Direct Owner Brokerage'
+                  : '🇪🇹 Bese Solutions • Homes • Cars • Machineries • Direct Verified Owner Brokerage')}
           </span>
           <span className="hidden md:inline-block ml-auto text-emerald-200 text-xs font-mono">
             Bole • Gerji • Bulbula • Megenagna • CMC • Ayat
@@ -160,8 +174,45 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </nav>
 
-          {/* Right Action Tools: Language Switcher, Theme Toggle & Post CTA */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Right Action Tools: Language Switcher, Theme Toggle, Data Saver & Post CTA */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5">
+            {/* Manual Refresh Button */}
+            {onManualRefresh && (
+              <button
+                id="btn-refresh-listings"
+                onClick={onManualRefresh}
+                disabled={isSyncing}
+                className="w-9 h-9 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700 flex items-center justify-center transition-colors cursor-pointer border border-stone-200 dark:border-stone-700 disabled:opacity-50"
+                title={isSyncing ? t.syncing : t.refreshListings}
+                aria-label="Refresh Listings"
+              >
+                <RefreshCw className={`w-4 h-4 text-emerald-600 dark:text-emerald-400 ${isSyncing ? 'animate-spin' : ''}`} />
+              </button>
+            )}
+
+            {/* Data Saver Mode Toggle Button */}
+            {onToggleDataSaver && (
+              <button
+                id="btn-data-saver"
+                onClick={onToggleDataSaver}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  dataSaverMode
+                    ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 shadow-2xs'
+                    : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-500 hover:text-stone-800'
+                }`}
+                title={dataSaverMode ? t.dataSaverOn : t.dataSaverOff}
+                aria-label="Toggle Data Saver"
+              >
+                <Zap className={`w-3.5 h-3.5 ${dataSaverMode ? 'text-emerald-600 dark:text-emerald-400 fill-emerald-500' : 'text-stone-400'}`} />
+                <span className="hidden sm:inline">
+                  {t.dataSaver}
+                </span>
+                {dataSaverMode && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                )}
+              </button>
+            )}
+
             {/* Theme Toggle Button */}
             {onToggleTheme && (
               <button

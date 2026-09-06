@@ -67,7 +67,9 @@ interface AdminPanelProps {
   onAutoCleanExpired: () => void;
   onDeleteProperty: (propertyId: string) => void;
   onMarkOccupied: (propertyId: string) => void;
-  onTogglePropertyStatus?: (propertyId: string, targetStatus: 'active' | 'occupied') => void;
+  onTogglePropertyStatus?: (propertyId: string, targetStatus: 'active' | 'occupied' | 'pending') => void;
+  onApproveProperty?: (propertyId: string) => void;
+  onApproveAllPendingProperties?: () => void;
   onDeleteRequest?: (requestId: string) => void;
   onWipeAllTestData?: () => Promise<void>;
   onBanPhone?: (phone: string) => void;
@@ -93,6 +95,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDeleteProperty,
   onMarkOccupied,
   onTogglePropertyStatus,
+  onApproveProperty,
+  onApproveAllPendingProperties,
   onDeleteRequest,
   onWipeAllTestData,
   onBanPhone,
@@ -236,7 +240,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const approvedRequests = unlockRequests.filter((r) => r.status === 'approved');
   const totalRevenueEtb = approvedRequests.reduce((sum, r) => sum + (r.amountBirr || 50), 0);
   const activeHouses = properties.filter((p) => p.status === 'active');
+  const pendingHouses = properties.filter((p) => p.status === 'pending');
   const occupiedHouses = properties.filter((p) => p.status === 'occupied');
+  const [inventoryStatusFilter, setInventoryStatusFilter] = useState<'all' | 'pending' | 'active' | 'occupied'>('all');
   const expiredHouses = properties.filter((p) => {
     const { isExpired } = getDaysRemaining(p.expiresAt);
     return isExpired || p.status === 'expired';
@@ -591,6 +597,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               >
                 <Building className="w-4 h-4" />
                 <span>{t.allListingsTab} ({properties.length})</span>
+                {pendingHouses.length > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-black animate-pulse">
+                    {pendingHouses.length} {currentLang === 'am' ? 'ይጽደቁ' : 'pending'}
+                  </span>
+                )}
               </button>
 
               <button
@@ -1103,11 +1114,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[11px] font-black">
                           {properties.length} {currentLang === 'am' ? 'ንብረቶች' : 'Items'}
                         </span>
+                        {pendingHouses.length > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black animate-pulse">
+                            {pendingHouses.length} {currentLang === 'am' ? 'ማረጋገጫ የሚጠብቁ' : 'Pending Approval'}
+                          </span>
+                        )}
                       </h4>
                       <p className="text-xs text-stone-500 dark:text-stone-400 mt-0.5">
                         {currentLang === 'am'
-                          ? 'እንደ አድሚን በቀጥታ ይለጥፉ፤ ወይም ከ 7 ቀናት በላይ የሆናቸውን ንብረቶች በማጽዳት ቦታ ይቆጥቡ።'
-                          : 'Post directly as admin without review, or clean up listings older than 7 days.'}
+                          ? 'የተለጠፉ ንብረቶችን እዚህ ማስተዳደር፣ ማጽደቅ፣ ወይም ከ 7 ቀናት በላይ የሆናቸውን በማጽዳት ቦታ መቆጠብ ይችላሉ።'
+                          : 'Review, approve, or manage listings. Clean up items older than 7 days to save storage.'}
                       </p>
                     </div>
 
@@ -1124,6 +1140,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       )}
 
                       <button
+                        type="button"
                         onClick={onAutoCleanExpired}
                         className="py-2.5 px-3.5 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
                       >
@@ -1133,133 +1150,273 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     </div>
                   </div>
 
+                  {/* Status Filter Tabs */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                    <button
+                      type="button"
+                      onClick={() => setInventoryStatusFilter('all')}
+                      className={`py-1.5 px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        inventoryStatusFilter === 'all'
+                          ? 'bg-stone-900 text-white dark:bg-white dark:text-stone-900 shadow-xs'
+                          : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                      }`}
+                    >
+                      {currentLang === 'am' ? 'ሁሉም ንብረቶች' : 'All Listings'} ({properties.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setInventoryStatusFilter('pending')}
+                      className={`py-1.5 px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                        inventoryStatusFilter === 'pending'
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300/70 dark:border-amber-800 hover:bg-amber-100'
+                      }`}
+                    >
+                      <span>⏳ {currentLang === 'am' ? 'ማረጋገጫ የሚጠብቁ' : 'Pending Approval'}</span>
+                      <span className="px-1.5 py-0.2 rounded-full bg-white/30 text-[10px] font-black">
+                        {pendingHouses.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setInventoryStatusFilter('active')}
+                      className={`py-1.5 px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        inventoryStatusFilter === 'active'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                      }`}
+                    >
+                      {currentLang === 'am' ? 'በገበያ ላይ ያሉ (Active)' : 'Active (Live)'} ({activeHouses.length})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setInventoryStatusFilter('occupied')}
+                      className={`py-1.5 px-3.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        inventoryStatusFilter === 'occupied'
+                          ? 'bg-stone-800 text-white shadow-xs'
+                          : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                      }`}
+                    >
+                      {currentLang === 'am' ? 'የተዘጉ/የተከራዩ (Occupied)' : 'Rented / Closed'} ({occupiedHouses.length})
+                    </button>
+                  </div>
+
+                  {/* Pending Listings Quick Action Banner */}
+                  {pendingHouses.length > 0 && (
+                    <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl animate-bounce">⏳</span>
+                        <div>
+                          <h5 className="font-black text-amber-900 dark:text-amber-200 text-xs sm:text-sm">
+                            {currentLang === 'am'
+                              ? `${pendingHouses.length} በባለቤቶች የተለጠፉ ቤቶች ማረጋገጫ በመጠባበቅ ላይ ናቸው!`
+                              : `${pendingHouses.length} owner listings waiting for your approval!`}
+                          </h5>
+                          <p className="text-[11px] text-amber-800/80 dark:text-amber-300 mt-0.5">
+                            {currentLang === 'am'
+                              ? 'አጽድቀው ወዲያውኑ በዋናው ድረ-ገጽ ላይ እንዲታዩ "ሁሉንም አጽድቅ" ይጫኑ ወይም ከስር ነጥለው ያጽድቁ።'
+                              : 'Click "Approve All" to publish all of them live to the public front page instantly, or review each below.'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onApproveAllPendingProperties) {
+                            onApproveAllPendingProperties();
+                          } else {
+                            pendingHouses.forEach((p) => onTogglePropertyStatus?.(p.id, 'active'));
+                          }
+                        }}
+                        className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition-all cursor-pointer shrink-0"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>{currentLang === 'am' ? 'ሁሉንም አጽድቅ (Approve All)' : 'Approve All Pending'}</span>
+                      </button>
+                    </div>
+                  )}
+
                   {/* Listings Table */}
                   <div className="space-y-3">
-                    {properties.map((prop) => {
-                      const { days, hours, isExpired } = getDaysRemaining(prop.expiresAt);
+                    {properties
+                      .filter((p) => {
+                        if (inventoryStatusFilter === 'pending') return p.status === 'pending';
+                        if (inventoryStatusFilter === 'active') return p.status === 'active';
+                        if (inventoryStatusFilter === 'occupied') return p.status === 'occupied';
+                        return true;
+                      })
+                      .map((prop) => {
+                        const { days, hours, isExpired } = getDaysRemaining(prop.expiresAt);
+                        const isPending = prop.status === 'pending';
 
-                      return (
-                        <div
-                          key={prop.id}
-                          className="bg-white dark:bg-stone-850 p-3.5 sm:p-4 rounded-2xl border border-stone-200 dark:border-stone-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
-                        >
-                          <div className="flex items-center gap-3">
-                            {prop.images[0] && (
-                              <img
-                                src={prop.images[0].url}
-                                alt={prop.title}
-                                className="w-14 h-12 rounded-lg object-cover border border-stone-200 dark:border-stone-700 shrink-0"
-                              />
-                            )}
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h5 className="font-bold text-stone-900 dark:text-stone-100 text-sm">{prop.title}</h5>
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 uppercase">
-                                  {prop.category || 'home'}
-                                </span>
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                                    prop.status === 'occupied'
-                                      ? 'bg-stone-900 text-white'
-                                      : isExpired
-                                      ? 'bg-rose-600 text-white'
-                                      : 'bg-emerald-600 text-white'
-                                  }`}
-                                >
-                                  {prop.status}
-                                </span>
-                              </div>
-                              <div className="text-xs text-stone-500 dark:text-stone-400 flex flex-wrap items-center gap-2 mt-0.5">
-                                <span className="text-emerald-600 dark:text-emerald-400 font-bold">{prop.area}</span>
-                                <span>•</span>
-                                <span>Owner: <strong>{prop.ownerName || 'Owner'}</strong> ({prop.ownerPhone}) • PIN: <code className="font-mono bg-stone-100 dark:bg-stone-800 px-1 rounded">{prop.ownerPin}</code></span>
-                                {prop.nationalIdFrontUrl && (
-                                  <button
-                                    onClick={() => setViewingOwnerId({
-                                      idUrl: prop.nationalIdFrontUrl!,
-                                      ownerName: prop.ownerName || 'Owner',
-                                      ownerPhone: prop.ownerPhone,
-                                      title: prop.title
-                                    })}
-                                    className="py-0.5 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                        return (
+                          <div
+                            key={prop.id}
+                            className={`p-3.5 sm:p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs transition-all ${
+                              isPending
+                                ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-300 dark:border-amber-700/80 ring-1 ring-amber-300 dark:ring-amber-700'
+                                : 'bg-white dark:bg-stone-850 border-stone-200 dark:border-stone-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {prop.images[0] && (
+                                <img
+                                  src={prop.images[0].url}
+                                  alt={prop.title}
+                                  className="w-14 h-12 rounded-lg object-cover border border-stone-200 dark:border-stone-700 shrink-0"
+                                />
+                              )}
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h5 className="font-bold text-stone-900 dark:text-stone-100 text-sm">{prop.title}</h5>
+                                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-300 uppercase">
+                                    {prop.category || 'home'}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-black px-2 py-0.5 rounded ${
+                                      isPending
+                                        ? 'bg-amber-500 text-white animate-pulse'
+                                        : prop.status === 'occupied'
+                                        ? 'bg-stone-900 text-white'
+                                        : isExpired
+                                        ? 'bg-rose-600 text-white'
+                                        : 'bg-emerald-600 text-white'
+                                    }`}
                                   >
-                                    <ShieldCheck className="w-3 h-3 text-indigo-600" />
-                                    <span>{currentLang === 'am' ? 'የባለቤት መታወቂያ ፈትሽ' : 'Verify ID'}</span>
-                                  </button>
-                                )}
+                                    {isPending
+                                      ? currentLang === 'am' ? '⏳ ማረጋገጫ የሚጠብቅ' : '⏳ Pending Approval'
+                                      : prop.status}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-stone-500 dark:text-stone-400 flex flex-wrap items-center gap-2 mt-1">
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">{prop.area}</span>
+                                  <span>•</span>
+                                  <span className="font-black text-stone-800 dark:text-stone-200">{prop.price.toLocaleString()} ETB</span>
+                                  <span>•</span>
+                                  <span>Owner: <strong>{prop.ownerName || 'Owner'}</strong> ({prop.ownerPhone}) • PIN: <code className="font-mono bg-stone-100 dark:bg-stone-800 px-1 rounded">{prop.ownerPin}</code></span>
+                                  {prop.nationalIdFrontUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewingOwnerId({
+                                        idUrl: prop.nationalIdFrontUrl!,
+                                        ownerName: prop.ownerName || 'Owner',
+                                        ownerPhone: prop.ownerPhone,
+                                        title: prop.title
+                                      })}
+                                      className="py-0.5 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                                      <span>{currentLang === 'am' ? 'የባለቤት መታወቂያ ፈትሽ' : 'Verify ID'}</span>
+                                    </button>
+                                  )}
+                                  {prop.sellerPaymentScreenshotUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setViewingScreenshot(prop.sellerPaymentScreenshotUrl!)}
+                                      className="py-0.5 px-2 bg-amber-100 dark:bg-amber-900/50 hover:bg-amber-200 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Eye className="w-3 h-3 text-amber-700" />
+                                      <span>{currentLang === 'am' ? 'ደረሰኝ እይ' : 'View Receipt'}</span>
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
-                            <span className="text-xs text-stone-500 dark:text-stone-400 font-medium mr-1">
-                              {isExpired ? (
-                                <span className="text-rose-600 font-bold">Expired</span>
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
+                              <span className="text-xs text-stone-500 dark:text-stone-400 font-medium mr-1">
+                                {isPending ? (
+                                  <span className="text-amber-600 dark:text-amber-400 font-bold">Needs Approval</span>
+                                ) : isExpired ? (
+                                  <span className="text-rose-600 font-bold">Expired</span>
+                                ) : (
+                                  `${days}d ${hours}h left`
+                                )}
+                              </span>
+
+                              {/* Smart Status Actions: Pending Approval / Available / Rented */}
+                              {isPending ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (onApproveProperty) {
+                                      onApproveProperty(prop.id);
+                                    } else if (onTogglePropertyStatus) {
+                                      onTogglePropertyStatus(prop.id, 'active');
+                                    }
+                                  }}
+                                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
+                                  title="Approve this listing and immediately publish it to the front page"
+                                >
+                                  <Check className="w-4 h-4 text-white" />
+                                  <span>{currentLang === 'am' ? 'አጽድቅና ወደ ፊት ለጥፍ' : 'Approve & Go Live'}</span>
+                                </button>
+                              ) : prop.status === 'occupied' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (onTogglePropertyStatus) {
+                                      onTogglePropertyStatus(prop.id, 'active');
+                                    } else {
+                                      onMarkOccupied(prop.id);
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                                  title="Make this listing live and visible on front page immediately"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  <span>{currentLang === 'am' ? 'ወደ ገበያ መልስ (Available)' : 'Make Available'}</span>
+                                </button>
                               ) : (
-                                `${days}d ${hours}h left`
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (onTogglePropertyStatus) {
+                                      onTogglePropertyStatus(prop.id, 'occupied');
+                                    } else {
+                                      onMarkOccupied(prop.id);
+                                    }
+                                  }}
+                                  className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 dark:bg-stone-700 dark:hover:bg-stone-600 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                                  title="Mark listing as rented or closed"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                  <span>{currentLang === 'am' ? 'ተከራይቷል (Mark Rented)' : 'Mark Rented'}</span>
+                                </button>
                               )}
-                            </span>
 
-                            {/* Smart Available / Rented Toggle */}
-                            {prop.status === 'occupied' ? (
+                              {/* Safe Delete with inline confirm state */}
                               <button
+                                type="button"
                                 onClick={() => {
-                                  if (onTogglePropertyStatus) {
-                                    onTogglePropertyStatus(prop.id, 'active');
+                                  if (deleteConfirmPropertyId === prop.id) {
+                                    onDeleteProperty(prop.id);
+                                    setDeleteConfirmPropertyId(null);
                                   } else {
-                                    onMarkOccupied(prop.id);
+                                    setDeleteConfirmPropertyId(prop.id);
+                                    setTimeout(() => setDeleteConfirmPropertyId(null), 5000);
                                   }
                                 }}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
-                                title="Make this listing live and visible on front page immediately"
+                                className={`p-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                                  deleteConfirmPropertyId === prop.id
+                                    ? 'bg-rose-600 text-white px-2.5 animate-pulse'
+                                    : 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                                }`}
+                                title="Delete property"
                               >
-                                <RefreshCw className="w-3.5 h-3.5" />
-                                <span>{currentLang === 'am' ? 'ወደ ገበያ መልስ (Available)' : 'Make Available'}</span>
+                                <Trash2 className="w-4 h-4" />
+                                {deleteConfirmPropertyId === prop.id && (
+                                  <span>{currentLang === 'am' ? 'ይጥፋ?' : 'Confirm?'}</span>
+                                )}
                               </button>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  if (onTogglePropertyStatus) {
-                                    onTogglePropertyStatus(prop.id, 'occupied');
-                                  } else {
-                                    onMarkOccupied(prop.id);
-                                  }
-                                }}
-                                className="px-2.5 py-1.5 bg-stone-900 hover:bg-stone-800 dark:bg-stone-700 dark:hover:bg-stone-600 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
-                                title="Mark listing as rented or closed"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                                <span>{currentLang === 'am' ? 'ተከራይቷል (Mark Rented)' : 'Mark Rented'}</span>
-                              </button>
-                            )}
-
-                            {/* Safe Delete with inline confirm state */}
-                            <button
-                              onClick={() => {
-                                if (deleteConfirmPropertyId === prop.id) {
-                                  onDeleteProperty(prop.id);
-                                  setDeleteConfirmPropertyId(null);
-                                } else {
-                                  setDeleteConfirmPropertyId(prop.id);
-                                  setTimeout(() => setDeleteConfirmPropertyId(null), 5000);
-                                }
-                              }}
-                              className={`p-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
-                                deleteConfirmPropertyId === prop.id
-                                  ? 'bg-rose-600 text-white px-2.5 animate-pulse'
-                                  : 'text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
-                              }`}
-                              title="Delete property"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                              {deleteConfirmPropertyId === prop.id && (
-                                <span>{currentLang === 'am' ? 'ይጥፋ?' : 'Confirm?'}</span>
-                              )}
-                            </button>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
                 </div>
               )}
@@ -1587,6 +1744,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         }
                         className="w-full px-3.5 py-2.5 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-sm font-black text-stone-900 dark:text-white"
                       />
+                    </div>
+                  </div>
+
+                  {/* Auto-Approve Owner Listings Switch */}
+                  <div className="p-4 bg-emerald-50/80 dark:bg-emerald-950/40 border-2 border-emerald-300 dark:border-emerald-700 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <span className="text-xs sm:text-sm font-black text-stone-900 dark:text-white">
+                            {currentLang === 'am'
+                              ? 'የባለቤት ማስታወቂያዎች በቀጥታ እንዲለጥፉ (Auto-Approve Live)'
+                              : 'Auto-Approve Owner Listings (Live Instantly)'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-stone-600 dark:text-stone-300">
+                          {currentLang === 'am'
+                            ? 'ሲበራ፡ ባለቤቶች ቤት ወይም ንብረት ሲለጥፉ ወዲያውኑ በድረ-ገጹ ዋና ገጽ ላይ ይታያል። ሲጠፋ፡ አስተዳዳሪው እዚህ መጥቶ በ 1-ክሊክ እስኪያጸድቅ ድረስ በግምገማ (Pending) ላይ ይቆያል።'
+                            : 'When ON: Listings posted by owners immediately go live on the public front page. When OFF: Listings wait for 1-click admin approval.'}
+                        </p>
+                      </div>
+
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={settingsForm.autoApproveListings !== false}
+                          onChange={(e) =>
+                            setSettingsForm({ ...settingsForm, autoApproveListings: e.target.checked })
+                          }
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer dark:bg-stone-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-stone-600 peer-checked:bg-emerald-600"></div>
+                      </label>
                     </div>
                   </div>
 
