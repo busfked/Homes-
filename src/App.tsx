@@ -995,7 +995,6 @@ export default function App() {
         onToggleTheme={toggleTheme}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        pendingApprovalsCount={pendingApprovalsCount}
         userPhone={userPhone}
         currentUser={currentUser}
         onOpenUserPhoneModal={() => setIsMyRequestsModalOpen(true)}
