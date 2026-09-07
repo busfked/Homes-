@@ -18,7 +18,8 @@ import {
   Gauge,
   Calendar,
   Layers,
-  Share2
+  Share2,
+  Phone
 } from 'lucide-react';
 import { Property, Language } from '../types';
 import { translations } from '../data/translations';
@@ -350,10 +351,17 @@ export const HouseCard: React.FC<HouseCardProps> = ({
           <div className="flex items-center gap-2">
             <div className="flex-1 min-w-0">
               {isUnlocked ? (
-                <div className="w-full py-2.5 px-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 shadow-2xs">
-                  <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                  <span>{t.ownerContactUnlocked}</span>
-                </div>
+                <a
+                  href={`tel:${property.ownerPhone}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+                  title="Call Owner directly"
+                >
+                  <Phone className="w-4 h-4 text-emerald-100 shrink-0" />
+                  <span className="truncate">
+                    {currentLang === 'am' ? 'ባለቤቱን ይደውሉ፦' : 'Call Owner:'} {property.ownerPhone}
+                  </span>
+                </a>
               ) : property.status === 'occupied' ? (
                 <div className="w-full py-2.5 px-3 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-500 dark:text-stone-400 text-xs font-bold flex items-center justify-center gap-1.5">
                   <span>{t.occupiedStatus}</span>

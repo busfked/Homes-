@@ -329,12 +329,12 @@ export async function wipeAllTestDataFromSupabase(): Promise<{ success: boolean;
 
   try {
     // Delete in dependency order with isolated catches
-    try { await supabase.from('unlock_requests').delete().neq('id', '___non_existent___'); } catch (e) { console.debug('Clear unlock_requests notice:', e); }
+    try { await supabase.from('unlock_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear unlock_requests notice:', e); }
     try { await supabase.from('user_unlocked_properties').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear user_unlocked_properties notice:', e); }
     try { await supabase.from('user_packages').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear user_packages notice:', e); }
-    try { await supabase.from('reported_brokers').delete().neq('id', '___non_existent___'); } catch (e) { console.debug('Clear reported_brokers notice:', e); }
-    try { await supabase.from('users').delete().neq('phone', '___non_existent___'); } catch (e) { console.debug('Clear users notice:', e); }
-    try { await supabase.from('properties').delete().neq('id', '___non_existent___'); } catch (e) { console.debug('Clear properties notice:', e); }
+    try { await supabase.from('reported_brokers').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear reported_brokers notice:', e); }
+    try { await supabase.from('users').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear users notice:', e); }
+    try { await supabase.from('properties').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear properties notice:', e); }
     return { success: true, message: 'All test data wiped from Supabase successfully' };
   } catch (err: any) {
     console.warn('wipeAllTestDataFromSupabase error:', err);
@@ -459,12 +459,45 @@ export async function fetchUnlockRequestsForPhoneFromSupabase(phone: string): Pr
   }
 }
 
+export async function updateUnlockRequestStatusInSupabase(
+  requestId: string,
+  status: 'approved' | 'rejected' | 'pending',
+  options?: { approvedAt?: string; adminNote?: string }
+): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+
+  try {
+    const payload: Record<string, any> = {
+      status,
+      approved_at: options?.approvedAt || (status === 'approved' ? new Date().toISOString() : null),
+    };
+    if (options?.adminNote !== undefined) {
+      payload.admin_note = options.adminNote;
+    }
+
+    const { error } = await supabase
+      .from('unlock_requests')
+      .update(payload)
+      .eq('id', requestId);
+
+    if (error) {
+      console.warn('updateUnlockRequestStatusInSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('updateUnlockRequestStatusInSupabase exception:', err);
+    return false;
+  }
+}
+
 export async function saveUnlockRequestToSupabase(req: UnlockRequest): Promise<boolean> {
   const supabase = getSupabase();
   if (!supabase) return false;
 
   try {
-    const row = {
+    const row: any = {
       id: req.id,
       request_type: req.requestType || req.type || 'single_unlock',
       property_id: req.propertyId || null,
@@ -472,19 +505,25 @@ export async function saveUnlockRequestToSupabase(req: UnlockRequest): Promise<b
       property_area: req.propertyArea || '',
       package_tier_id: req.packageTierId || null,
       package_tier_name: req.packageTierName || null,
-      buyer_name: req.buyerName,
+      buyer_name: req.buyerName || 'User',
       buyer_phone: req.buyerPhone,
-      payment_method: req.paymentMethod,
-      transaction_ref: req.transactionRef,
-      screenshot_url: req.screenshotUrl,
-      screenshot_size_kb: req.screenshotSizeKb,
-      status: req.status,
-      amount_birr: req.amountBirr,
-      remaining_unlocks: req.remainingUnlocks || 5,
-      created_at: req.createdAt,
+      payment_method: req.paymentMethod || 'telebirr',
+      transaction_ref: req.transactionRef || '',
+      status: req.status || 'pending',
+      amount_birr: req.amountBirr || 150,
+      remaining_unlocks: req.remainingUnlocks ?? 5,
+      created_at: req.createdAt || new Date().toISOString(),
       approved_at: req.approvedAt || null,
       admin_note: req.adminNote || null,
     };
+
+    // If screenshotUrl is present, set it; otherwise don't overwrite existing in db unless provided
+    if (req.screenshotUrl !== undefined) {
+      row.screenshot_url = req.screenshotUrl || 'placeholder_screenshot';
+    }
+    if (req.screenshotSizeKb !== undefined) {
+      row.screenshot_size_kb = req.screenshotSizeKb;
+    }
 
     const { error } = await supabase.from('unlock_requests').upsert(row);
     if (error) {

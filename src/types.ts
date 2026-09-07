@@ -11,7 +11,7 @@ export type MachineryType = 'excavator' | 'wheel_loader' | 'dump_truck' | 'crane
 
 export type ListingType = 'rent' | 'sale';
 
-export type PropertyStatus = 'active' | 'occupied' | 'expired' | 'pending' | 'pending_approval';
+export type PropertyStatus = 'active' | 'occupied' | 'expired' | 'pending' | 'pending_approval' | 'rejected';
 
 export interface PropertyImage {
   url: string;

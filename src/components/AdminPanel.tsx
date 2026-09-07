@@ -72,6 +72,7 @@ interface AdminPanelProps {
   onMarkOccupied: (propertyId: string) => void;
   onTogglePropertyStatus?: (propertyId: string, targetStatus: 'active' | 'occupied' | 'pending') => void;
   onApproveProperty?: (propertyId: string) => void;
+  onRejectProperty?: (propertyId: string) => void;
   onApproveAllPendingProperties?: () => void;
   onDeleteRequest?: (requestId: string) => void;
   onWipeAllTestData?: () => Promise<void>;
@@ -99,6 +100,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onMarkOccupied,
   onTogglePropertyStatus,
   onApproveProperty,
+  onRejectProperty,
   onApproveAllPendingProperties,
   onDeleteRequest,
   onWipeAllTestData,
@@ -1367,31 +1369,46 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                                   <span className="font-black text-stone-800 dark:text-stone-200">{prop.price.toLocaleString()} ETB</span>
                                   <span>•</span>
                                   <span>Owner: <strong>{prop.ownerName || 'Owner'}</strong> ({prop.ownerPhone}) • PIN: <code className="font-mono bg-stone-100 dark:bg-stone-800 px-1 rounded">{prop.ownerPin}</code></span>
-                                  {prop.nationalIdFrontUrl && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setViewingOwnerId({
-                                        idUrl: prop.nationalIdFrontUrl!,
-                                        ownerName: prop.ownerName || 'Owner',
-                                        ownerPhone: prop.ownerPhone,
-                                        title: prop.title
-                                      })}
-                                      className="py-0.5 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <ShieldCheck className="w-3 h-3 text-indigo-600" />
-                                      <span>{currentLang === 'am' ? 'የባለቤት መታወቂያ ፈትሽ' : 'Verify ID'}</span>
-                                    </button>
-                                  )}
-                                  {prop.sellerPaymentScreenshotUrl && (
-                                    <button
-                                      type="button"
-                                      onClick={() => setViewingScreenshot(prop.sellerPaymentScreenshotUrl!)}
-                                      className="py-0.5 px-2 bg-amber-100 dark:bg-amber-900/50 hover:bg-amber-200 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
-                                    >
-                                      <Eye className="w-3 h-3 text-amber-700" />
-                                      <span>{currentLang === 'am' ? 'ደረሰኝ እይ' : 'View Receipt'}</span>
-                                    </button>
-                                  )}
+                                  {(() => {
+                                    const linkedReq = unlockRequests.find((r) => r.propertyId === prop.id);
+                                    const receiptScreenshot = prop.sellerPaymentScreenshotUrl || linkedReq?.screenshotUrl;
+                                    const ownerIdUrl = prop.nationalIdFrontUrl;
+
+                                    return (
+                                      <>
+                                        {ownerIdUrl ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setViewingOwnerId({
+                                              idUrl: ownerIdUrl,
+                                              ownerName: prop.ownerName || 'Owner',
+                                              ownerPhone: prop.ownerPhone,
+                                              title: prop.title
+                                            })}
+                                            className="py-0.5 px-2 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                          >
+                                            <ShieldCheck className="w-3 h-3 text-indigo-600" />
+                                            <span>{currentLang === 'am' ? 'የባለቤት መታወቂያ ፈትሽ' : 'Verify ID'}</span>
+                                          </button>
+                                        ) : isPending ? (
+                                          <span className="text-[10px] text-stone-400 italic">No ID</span>
+                                        ) : null}
+
+                                        {receiptScreenshot ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setViewingScreenshot(receiptScreenshot)}
+                                            className="py-0.5 px-2 bg-amber-100 dark:bg-amber-900/50 hover:bg-amber-200 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 rounded-md text-[10px] font-bold flex items-center gap-1 cursor-pointer"
+                                          >
+                                            <Eye className="w-3 h-3 text-amber-700" />
+                                            <span>{currentLang === 'am' ? 'ደረሰኝ እይ' : 'View Receipt'}</span>
+                                          </button>
+                                        ) : isPending ? (
+                                          <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">⚠️ {currentLang === 'am' ? 'ደረሰኝ የለም' : 'No Receipt'}</span>
+                                        ) : null}
+                                      </>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             </div>
@@ -1409,21 +1426,38 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
 
                               {/* Smart Status Actions: Pending Approval / Available / Rented */}
                               {isPending ? (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (onApproveProperty) {
-                                      onApproveProperty(prop.id);
-                                    } else if (onTogglePropertyStatus) {
-                                      onTogglePropertyStatus(prop.id, 'active');
-                                    }
-                                  }}
-                                  className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
-                                  title="Approve this listing and immediately publish it to the front page"
-                                >
-                                  <Check className="w-4 h-4 text-white" />
-                                  <span>{currentLang === 'am' ? 'አጽድቅና ወደ ፊት ለጥፍ' : 'Approve & Go Live'}</span>
-                                </button>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (onApproveProperty) {
+                                        onApproveProperty(prop.id);
+                                      } else if (onTogglePropertyStatus) {
+                                        onTogglePropertyStatus(prop.id, 'active');
+                                      }
+                                    }}
+                                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md cursor-pointer transition-all"
+                                    title="Approve this listing and immediately publish it to the front page"
+                                  >
+                                    <Check className="w-4 h-4 text-white" />
+                                    <span>{currentLang === 'am' ? 'አጽድቅ' : 'Approve'}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (onRejectProperty) {
+                                        onRejectProperty(prop.id);
+                                      } else {
+                                        onDeleteProperty(prop.id);
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
+                                    title="Decline and remove this pending listing"
+                                  >
+                                    <X className="w-3.5 h-3.5 text-rose-600" />
+                                    <span>{currentLang === 'am' ? 'አትቀበል' : 'Decline'}</span>
+                                  </button>
+                                </div>
                               ) : prop.status === 'occupied' ? (
                                 <button
                                   type="button"

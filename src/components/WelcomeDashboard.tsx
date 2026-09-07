@@ -112,147 +112,147 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
     <section className="bg-gradient-to-b from-emerald-500/10 via-emerald-500/5 to-transparent pb-6 pt-4 sm:pt-8 border-b border-stone-200/80 dark:border-stone-800 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Hero Header */}
-        <div className="text-center max-w-3xl mx-auto mb-6">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-300 text-xs font-bold mb-3 border border-emerald-300/60 dark:border-emerald-700 shadow-2xs">
+        <div className="text-center max-w-3xl mx-auto mb-4 sm:mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 sm:px-3.5 sm:py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-300 text-[11px] sm:text-xs font-bold mb-2 sm:mb-3 border border-emerald-300/60 dark:border-emerald-700 shadow-2xs">
             <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
             <span>{currentLang === 'am' ? 'ቤሴ የቤት መፍትሄ • አዲስ አበባ' : 'Bese Home Solutions • Addis Ababa'}</span>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-stone-900 dark:text-stone-100 tracking-tight leading-tight">
+          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-stone-900 dark:text-stone-100 tracking-tight leading-tight">
             {currentLang === 'am' ? 'በአዲስ አበባ ጥራት ያላቸውን ቤቶች ይከራዩ ወይም ይግዙ' : 'Rent or Buy Quality Homes in Addis Ababa'}
           </h1>
 
-          <p className="mt-3 text-sm sm:text-base text-stone-600 dark:text-stone-300 leading-relaxed">
+          <p className="hidden sm:block mt-3 text-sm sm:text-base text-stone-600 dark:text-stone-300 leading-relaxed">
             {t.welcomeDesc}
           </p>
 
           {/* Quick Value Props Pills & Support Contact */}
-          <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-medium text-stone-700 dark:text-stone-300">
-            <div className="flex items-center justify-center gap-1.5 bg-white dark:bg-stone-850 py-2 px-3 rounded-xl border border-stone-200 dark:border-stone-800 shadow-2xs">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>{currentLang === 'am' ? 'የተጣሩ 2-3 ፎቶዎች' : '2-3 Verified Photos'}</span>
+          <div className="mt-3 sm:mt-5 grid grid-cols-2 sm:grid-cols-4 gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-medium text-stone-700 dark:text-stone-300">
+            <div className="flex items-center justify-center gap-1.5 bg-white dark:bg-stone-850 py-1.5 sm:py-2 px-2.5 rounded-xl border border-stone-200 dark:border-stone-800 shadow-2xs">
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span className="truncate">{currentLang === 'am' ? 'የተጣሩ ፎቶዎች' : 'Verified Photos'}</span>
             </div>
             
-            {/* Direct Official Support Numbers (Replaces the 100/500 text) */}
+            {/* Direct Official Support Numbers */}
             <a 
               href="tel:0991154337"
-              className="flex items-center justify-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 text-emerald-900 dark:text-emerald-200 py-2 px-3 rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-2xs font-bold transition-all"
+              className="flex items-center justify-center gap-1.5 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 text-emerald-900 dark:text-emerald-200 py-1.5 sm:py-2 px-2.5 rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-2xs font-bold transition-all"
               title="Call Support"
             >
-              <Phone className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span className="font-mono text-[11px] sm:text-xs">0991154337 / 0983150749</span>
+              <Phone className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span className="font-mono text-[10px] sm:text-xs truncate">0991154337 / 0983150749</span>
             </a>
 
-            <div className="flex items-center justify-center gap-1.5 bg-white dark:bg-stone-850 py-2 px-3 rounded-xl border border-stone-200 dark:border-stone-800 shadow-2xs">
-              <Clock className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-              <span>{currentLang === 'am' ? 'የ 7 ቀን ወቅታዊ መረጃ' : '7-Day Fresh Listings'}</span>
+            <div className="flex items-center justify-center gap-1.5 bg-white dark:bg-stone-850 py-1.5 sm:py-2 px-2.5 rounded-xl border border-stone-200 dark:border-stone-800 shadow-2xs">
+              <Clock className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span className="truncate">{currentLang === 'am' ? 'የ 7 ቀን ወቅታዊ' : '7-Day Fresh'}</span>
             </div>
-            <div className="flex items-center justify-center gap-1.5 bg-white dark:bg-stone-850 py-2 px-3 rounded-xl border border-stone-200 dark:border-stone-800 shadow-2xs">
-              <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-              <span>{currentLang === 'am' ? 'ፈጣን የፎቶ ቅነሳ (Low KB)' : 'Compressed Low-KB'}</span>
+            <div className="flex items-center justify-center gap-1.5 bg-white dark:bg-stone-850 py-1.5 sm:py-2 px-2.5 rounded-xl border border-stone-200 dark:border-stone-800 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span className="truncate">{currentLang === 'am' ? 'ፈጣን ዳታ ቆጣቢ' : 'Data Saver'}</span>
             </div>
           </div>
         </div>
 
         {/* DUAL PORTALS: OWNER / SELLER & FINDER / RENTER REGISTRATION & LOGIN */}
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="mb-4 sm:mb-6 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
           {/* 1. OWNER & SELLER PORTAL */}
-          <div className="p-5 bg-gradient-to-br from-emerald-700 via-emerald-850 to-stone-900 text-white rounded-3xl shadow-lg border border-emerald-400/30 flex flex-col justify-between">
-            <div className="space-y-2">
+          <div className="p-3.5 sm:p-5 bg-gradient-to-br from-emerald-700 via-emerald-850 to-stone-900 text-white rounded-2xl sm:rounded-3xl shadow-lg border border-emerald-400/30 flex flex-col justify-between">
+            <div className="space-y-1.5 sm:space-y-2">
               <div className="flex items-center justify-between">
-                <span className="px-3 py-1 rounded-full bg-white/20 text-white text-[11px] font-black uppercase tracking-wider backdrop-blur-xs flex items-center gap-1.5">
-                  <Home className="w-3.5 h-3.5" />
+                <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full bg-white/20 text-white text-[10px] sm:text-[11px] font-black uppercase tracking-wider backdrop-blur-xs flex items-center gap-1.5">
+                  <Home className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                   <span>{currentLang === 'am' ? 'የአከራይና ሻጮች ፖርታል' : 'Owner & Seller Portal'}</span>
                 </span>
-                <span className="text-[11px] text-emerald-200 font-bold bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                  {currentLang === 'am' ? '150 - 500 ብር መለጠፊያ' : '150 - 500 ETB Listing'}
+                <span className="text-[10px] sm:text-[11px] text-emerald-200 font-bold bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                  {currentLang === 'am' ? '150 - 500 ብር' : '150 - 500 ETB'}
                 </span>
               </div>
-              <h3 className="font-black text-lg sm:text-xl text-white">
+              <h3 className="font-black text-base sm:text-xl text-white">
                 {currentLang === 'am' ? 'ቤት፣ መኪና ወይም ማሽነሪ ያከራዩ / ይሽጡ' : 'Post & Rent / Sell Your Property'}
               </h3>
-              <p className="text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
+              <p className="hidden sm:block text-xs sm:text-sm text-emerald-100/90 leading-relaxed">
                 {currentLang === 'am'
                   ? 'ማስታወቂያዎን በደቂቃዎች ውስጥ ይለጥፉ፣ ፎቶዎች በትንሽ ዳታ ይጨመቃሉ። የቀደሙትን በፒን ቁጥርዎ ያስተዳድሩ።'
                   : 'Post your verified property in minutes. Manage status, renew for 7 days or mark as occupied with your PIN.'}
               </p>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-2.5">
+            <div className="mt-3 sm:mt-5 grid grid-cols-2 gap-2">
               <button
                 id="owner-portal-post-btn"
                 onClick={onPostHouseClick}
-                className="py-2.5 px-3 bg-white hover:bg-stone-100 active:scale-98 text-emerald-950 font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="py-2 sm:py-2.5 px-2 sm:px-3 bg-white hover:bg-stone-100 active:scale-98 text-emerald-950 font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer min-h-[42px]"
               >
                 <PlusCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{currentLang === 'am' ? 'ማስታወቂያ ለጥፍ' : 'Post Listing'}</span>
+                <span className="truncate">{currentLang === 'am' ? 'ማስታወቂያ ለጥፍ' : 'Post Listing'}</span>
               </button>
 
               {onOpenOwnerManage && (
                 <button
                   id="owner-portal-manage-btn"
                   onClick={onOpenOwnerManage}
-                  className="py-2.5 px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  className="py-2 sm:py-2.5 px-2 sm:px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer min-h-[42px]"
                 >
                   <KeyRound className="w-4 h-4 shrink-0" />
-                  <span>{currentLang === 'am' ? 'የባለቤት መግቢያ' : 'Owner Login'}</span>
+                  <span className="truncate">{currentLang === 'am' ? 'የባለቤት መግቢያ' : 'Owner Login'}</span>
                 </button>
               )}
             </div>
           </div>
 
           {/* 2. FINDER & BUYER PORTAL */}
-          <div className="p-5 bg-gradient-to-br from-indigo-900 via-stone-900 to-stone-950 text-white rounded-3xl shadow-lg border border-indigo-400/30 flex flex-col justify-between">
-            <div className="space-y-2">
+          <div className="p-3.5 sm:p-5 bg-gradient-to-br from-indigo-900 via-stone-900 to-stone-950 text-white rounded-2xl sm:rounded-3xl shadow-lg border border-indigo-400/30 flex flex-col justify-between">
+            <div className="space-y-1.5 sm:space-y-2">
               <div className="flex items-center justify-between">
-                <span className="px-3 py-1 rounded-full bg-indigo-500/30 text-indigo-200 text-[11px] font-black uppercase tracking-wider backdrop-blur-xs flex items-center gap-1.5 border border-indigo-400/30">
-                  <User className="w-3.5 h-3.5" />
-                  <span>{currentLang === 'am' ? 'የፈላጊዎች እና የገዢዎች ፖርታል' : 'Finder & Buyer Portal'}</span>
+                <span className="px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full bg-indigo-500/30 text-indigo-200 text-[10px] sm:text-[11px] font-black uppercase tracking-wider backdrop-blur-xs flex items-center gap-1.5 border border-indigo-400/30">
+                  <User className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
+                  <span>{currentLang === 'am' ? 'የፈላጊዎች ፖርታል' : 'Finder Portal'}</span>
                 </span>
                 {currentUser ? (
-                  <span className="text-[11px] text-emerald-300 font-bold bg-emerald-950/80 px-2.5 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>{currentUser.name} • {currentUser.unlockedPropertyIds?.length || 0} {currentLang === 'am' ? 'የተከፈቱ ቤቶች' : 'Unlocked'}</span>
+                  <span className="text-[10px] sm:text-[11px] text-emerald-300 font-bold bg-emerald-950/80 px-2 py-0.5 rounded-lg border border-emerald-500/30 flex items-center gap-1 truncate max-w-[150px]">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                    <span className="truncate">{currentUser.name}</span>
                   </span>
                 ) : (
-                  <span className="text-[11px] text-indigo-200 font-bold bg-indigo-950/70 px-2.5 py-0.5 rounded-lg border border-indigo-400/30">
-                    {currentLang === 'am' ? 'በስልክ እና ፓስወርድ መመዝገቢያ' : 'Phone & Password'}
+                  <span className="text-[10px] sm:text-[11px] text-indigo-200 font-bold bg-indigo-950/70 px-2 py-0.5 rounded-lg border border-indigo-400/30">
+                    {currentLang === 'am' ? 'መግቢያ' : 'Login'}
                   </span>
                 )}
               </div>
-              <h3 className="font-black text-lg sm:text-xl text-white">
+              <h3 className="font-black text-base sm:text-xl text-white">
                 {currentUser
                   ? (currentLang === 'am' ? `እንኳን ደህና መጡ ${currentUser.name}!` : `Welcome back, ${currentUser.name}!`)
-                  : (currentLang === 'am' ? 'የቤት ወይም የመኪና ፈላጊ ምዝገባ / መግቢያ' : 'Finder Registration & Login')}
+                  : (currentLang === 'am' ? 'የቤት ወይም የመኪና ፈላጊ ምዝገባ' : 'Finder Registration & Login')}
               </h3>
-              <p className="text-xs sm:text-sm text-stone-300 leading-relaxed">
+              <p className="hidden sm:block text-xs sm:text-sm text-stone-300 leading-relaxed">
                 {currentLang === 'am'
-                  ? 'በስልክዎ እና በፓስወርድዎ ይመዝገቡ። የሚፈልጉትን ቤት ሲያገኙ የቤቱን ደረጃ ክፍያ (150፣ 250፣ 350 ወይም 500 ብር) ከፍለው ስክሪንሽት ሲልኩ የባለቤቱ ስልክ ቁጥር እና ትክክለኛ መገኛ ወዲያውኑ ይከፈትልዎታል!'
-                  : 'Register once with your phone and password. When you find a house, pay the exact tier fee (150, 250, 350, or 500 ETB) and send a screenshot to unlock the owner contact!'}
+                  ? 'በስልክዎ እና በፓስወርድዎ ይመዝገቡ። የሚፈልጉትን ቤት ሲያገኙ የቤቱን ደረጃ ክፍያ ከፍለው ስክሪንሽት ሲልኩ የባለቤቱ ስልክ ቁጥር ወዲያውኑ ይከፈትልዎታል!'
+                  : 'Register once with your phone and password. When you find a house, pay the tier fee and send screenshot to unlock!'}
               </p>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-2.5">
+            <div className="mt-3 sm:mt-5 grid grid-cols-2 gap-2">
               <button
                 id="finder-portal-auth-btn"
                 onClick={onOpenUserAuthModal}
-                className="py-2.5 px-3 bg-indigo-500 hover:bg-indigo-600 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="py-2 sm:py-2.5 px-2 sm:px-3 bg-indigo-500 hover:bg-indigo-600 active:scale-98 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-md flex items-center justify-center gap-1.5 transition-all cursor-pointer min-h-[42px]"
               >
                 <User className="w-4 h-4 shrink-0" />
-                <span>
+                <span className="truncate">
                   {currentUser
-                    ? (currentLang === 'am' ? 'መለያዬ / የተከፈቱ ቤቶች' : 'My Account & Unlocked')
-                    : (currentLang === 'am' ? 'መግቢያ / ምዝገባ' : 'Register / Login')}
+                    ? (currentLang === 'am' ? 'መለያዬ' : 'My Account')
+                    : (currentLang === 'am' ? 'መግቢያ / ምዝገባ' : 'Login / Register')}
                 </span>
               </button>
 
               <button
                 id="finder-portal-requests-btn"
                 onClick={onViewRequestsClick || onOpenUserAuthModal}
-                className="py-2.5 px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                className="py-2 sm:py-2.5 px-2 sm:px-3 bg-white/15 hover:bg-white/25 active:scale-98 text-white font-bold text-xs sm:text-sm rounded-xl border border-white/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer min-h-[42px]"
               >
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>{currentLang === 'am' ? 'የተከፈቱ ቤቶች' : 'My Unlocked'}</span>
+                <span className="truncate">{currentLang === 'am' ? 'የተከፈቱ ቤቶች' : 'My Unlocked'}</span>
               </button>
             </div>
           </div>

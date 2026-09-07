@@ -67,6 +67,7 @@ import {
   fetchUnlockRequestsFromSupabase,
   fetchUnlockRequestsForPhoneFromSupabase,
   saveUnlockRequestToSupabase,
+  updateUnlockRequestStatusInSupabase,
   fetchUsersFromSupabase,
   fetchUserByPhoneFromSupabase,
   saveUserToSupabase,
@@ -173,7 +174,7 @@ export default function App() {
   const lastSyncTimeRef = useRef<number>(0);
   // Keep optimistic moderation decisions from being overwritten by a stale refresh.
   const requestStatusOverridesRef = useRef<Record<string, { status: 'approved' | 'rejected'; approvedAt?: string; adminNote?: string }>>({});
-  const propertyStatusOverridesRef = useRef<Record<string, 'active' | 'occupied' | 'pending'>>({});
+  const propertyStatusOverridesRef = useRef<Record<string, 'active' | 'occupied' | 'pending' | 'rejected'>>({});
   // Prevent a double-click or stale admin tab from granting the same request twice.
   const processedRequestIdsRef = useRef<Set<string>>(new Set());
 
@@ -209,6 +210,7 @@ export default function App() {
 
     try {
       setIsSyncing(true);
+      const effectiveUserPhone = (userPhone || currentUser?.phone || getStoredUserPhone() || '').trim();
 
       // 1. PROPERTIES SYNC (Ultra-low bandwidth check):
       // Only downloads ~0.5 KB of IDs and status rather than multi-megabytes of base64 photos!
@@ -319,27 +321,40 @@ export default function App() {
           setUnlockRequests(reconciledRequests);
           saveUnlockRequests(reconciledRequests);
         }
-      } else if (activeTab === 'my-requests' && userPhone) {
-        const myReqs = await fetchUnlockRequestsForPhoneFromSupabase(userPhone);
+      } else if (effectiveUserPhone) {
+        const myReqs = await fetchUnlockRequestsForPhoneFromSupabase(effectiveUserPhone);
         if (myReqs && Array.isArray(myReqs)) {
+          const reconciledMyReqs = myReqs.map((remoteReq) => {
+            const localDecision = requestStatusOverridesRef.current[remoteReq.id];
+            if (localDecision && remoteReq.status === 'pending') {
+              return {
+                ...remoteReq,
+                status: localDecision.status,
+                approvedAt: localDecision.approvedAt || remoteReq.approvedAt,
+                adminNote: localDecision.adminNote || remoteReq.adminNote,
+              };
+            }
+            return remoteReq;
+          });
+
           setUnlockRequests((prev) => {
-            const cleanPhone = userPhone.replace(/[\s-]/g, '');
+            const cleanPhone = effectiveUserPhone.replace(/[\s-]/g, '');
             const otherReqs = prev.filter((r) => r.buyerPhone?.replace(/[\s-]/g, '') !== cleanPhone);
-            const merged = [...myReqs, ...otherReqs];
+            const merged = [...reconciledMyReqs, ...otherReqs];
             saveUnlockRequests(merged);
             return merged;
           });
         }
       }
 
-      // 3. USERS: Only download full user database if Admin panel is open
+      // 3. USERS: Download full user database for Admin, or personal record for visitor
       if (activeTab === 'admin' || adminDataOnly) {
         const remoteUsers = await fetchUsersFromSupabase();
         if (remoteUsers && Array.isArray(remoteUsers) && remoteUsers.length > 0) {
           saveUsers(remoteUsers);
         }
-      } else if (currentUser?.phone) {
-        const updatedSelf = await fetchUserByPhoneFromSupabase(currentUser.phone);
+      } else if (effectiveUserPhone) {
+        const updatedSelf = await fetchUserByPhoneFromSupabase(effectiveUserPhone);
         if (updatedSelf) {
           setCurrentUser(updatedSelf);
           saveActiveUserSession(updatedSelf);
@@ -601,6 +616,7 @@ export default function App() {
     );
     updateRequestsState(updated);
     saveUnlockRequestToSupabase(approvedReq).catch(console.warn);
+    updateUnlockRequestStatusInSupabase(requestId, 'approved', { approvedAt }).catch(console.warn);
 
     // Process based on request type
     if (targetReq.type === 'owner_listing_fee' && targetReq.propertyId) {
@@ -618,7 +634,16 @@ export default function App() {
       // User unlock request (5 homes in similar price range)
       // 1. Directly unlock the requested property if present
       if (targetReq.propertyId) {
-        creditSinglePropertyUnlockToUser(targetReq.buyerPhone, targetReq.propertyId);
+        const creditRes = creditSinglePropertyUnlockToUser(targetReq.buyerPhone, targetReq.propertyId);
+        saveUserUnlockedPropertyToSupabase(targetReq.buyerPhone, targetReq.propertyId).catch(console.warn);
+        if (creditRes.updatedUser) {
+          saveUserToSupabase(creditRes.updatedUser).catch(console.warn);
+          const cleanBuyerPhone = targetReq.buyerPhone.replace(/[\s-]/g, '');
+          if (currentUser && currentUser.phone.replace(/[\s-]/g, '') === cleanBuyerPhone) {
+            setCurrentUser(creditRes.updatedUser);
+            saveActiveUserSession(creditRes.updatedUser);
+          }
+        }
       }
 
       // 2. Identify the pricing tier and max price for this range
@@ -644,6 +669,7 @@ export default function App() {
         currentUser.phone.replace(/[\s-]/g, '') === cleanBuyerPhone
       ) {
         setCurrentUser(result.updatedUser);
+        saveActiveUserSession(result.updatedUser);
       }
 
       if (result.updatedUser) {
@@ -702,9 +728,40 @@ export default function App() {
     );
     updateRequestsState(updated);
     saveUnlockRequestToSupabase(rejectedReq).catch(console.warn);
+    updateUnlockRequestStatusInSupabase(requestId, 'rejected', { adminNote: note }).catch(console.warn);
+
+    // If owner listing was rejected, remove the property
+    if (targetReq.type === 'owner_listing_fee' && targetReq.propertyId) {
+      propertyStatusOverridesRef.current[targetReq.propertyId] = 'rejected';
+      const updatedProps = properties.filter((p) => p.id !== targetReq.propertyId);
+      updatePropertiesState(updatedProps);
+      deletePropertyFromSupabase(targetReq.propertyId).catch(console.warn);
+    }
 
     showToast(
       currentLang === 'am' ? 'ስክሪንሽቱ ውድቅ ተደርጓል።' : 'Screenshot rejected.'
+    );
+  };
+
+  // Admin Reject a pending property
+  const handleRejectProperty = (propertyId: string) => {
+    const targetProp = properties.find((p) => p.id === propertyId);
+    if (!targetProp) return;
+    propertyStatusOverridesRef.current[propertyId] = 'rejected';
+    const updated = properties.filter((p) => p.id !== propertyId);
+    updatePropertiesState(updated);
+    deletePropertyFromSupabase(propertyId).catch(console.warn);
+
+    // Also reject linked request if any
+    const linkedReq = unlockRequests.find((r) => r.propertyId === propertyId && r.status === 'pending');
+    if (linkedReq) {
+      handleRejectRequest(linkedReq.id, 'Listing declined by admin');
+    }
+
+    showToast(
+      currentLang === 'am'
+        ? `"${targetProp.title}" ውድቅ ተደርጎ ተሰርዟል።`
+        : `"${targetProp.title}" declined and removed.`
     );
   };
 
@@ -1347,6 +1404,7 @@ export default function App() {
         onManualSync={syncFromSupabase}
         onTogglePropertyStatus={handleTogglePropertyStatus}
         onApproveProperty={handleApproveProperty}
+        onRejectProperty={handleRejectProperty}
         onApproveAllPendingProperties={handleApproveAllPendingProperties}
         onWipeAllTestData={handleWipeAllTestData}
         onOpenPostPropertyAsAdmin={() => {

@@ -312,12 +312,12 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
     // Tiered Listing Fee calculation
     const calculatedListingFee = calculateOwnerListingFee(Number(price) || 0, listingType, category);
 
-    // Validate listing fee payment screenshot or reference (only for regular owners)
-    if (!isAdminPost && !sellerReceiptImage && !sellerReceiptRef.trim()) {
+    // Validate listing fee payment screenshot (strictly required for regular owners)
+    if (!isAdminPost && !sellerReceiptImage) {
       setErrorMsg(
         currentLang === 'am'
-          ? `እባክዎ የ ${calculatedListingFee} ብር የማስመዝገቢያ ክፍያ ስክሪንሽት ወይም የግብይት ቁጥር ያስገቡ።`
-          : `Please attach your ${calculatedListingFee} ETB listing fee payment screenshot or reference number.`
+          ? `እባክዎ የ ${calculatedListingFee} ብር የማስመዝገቢያ ክፍያ ስክሪንሽት (Receipt Screenshot) ያያይዙ።`
+          : `Please upload your ${calculatedListingFee} ETB listing fee payment receipt screenshot.`
       );
       return;
     }
