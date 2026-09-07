@@ -911,25 +911,45 @@ export function getDaysRemaining(expiresAt: string): {
 }
 
 /**
- * Legacy check helper for backwards compatibility
+ * Secure check helper: A property is only unlocked if the authenticated user
+ * has paid for and been granted access to this specific property.
+ * Owner listing fees never grant buyer access, and arbitrary unverified phone numbers
+ * cannot view unlocked contacts without account verification.
  */
 export function isPropertyUnlockedForBuyer(
   propertyId: string,
-  buyerPhone: string,
-  requests: UnlockRequest[]
+  buyerPhone?: string,
+  requests?: UnlockRequest[],
+  currentUser?: UserAccount | null
 ): boolean {
-  const activeUser = getActiveUserSession();
-  if (activeUser && activeUser.unlockedPropertyIds.includes(propertyId)) {
+  if (!propertyId) return false;
+
+  const user = currentUser || getActiveUserSession();
+  if (!user) {
+    // Unauthenticated visitors do not receive unlocked owner contacts
+    return false;
+  }
+
+  // Verify that the property is in the user's unlocked property list
+  if (Array.isArray(user.unlockedPropertyIds) && user.unlockedPropertyIds.includes(propertyId)) {
     return true;
   }
-  if (!buyerPhone || !propertyId) return false;
-  const cleanPhone = buyerPhone.replace(/[\s-]/g, '');
-  return requests.some(
-    (r) =>
-      r.propertyId === propertyId &&
-      r.buyerPhone.replace(/[\s-]/g, '') === cleanPhone &&
-      r.status === 'approved'
-  );
+
+  // Check for verified approved BUYER unlock request belonging to this user
+  const cleanUserPhone = (user.phone || '').replace(/[\s-]/g, '');
+  if (cleanUserPhone && Array.isArray(requests)) {
+    return requests.some(
+      (r) =>
+        r.propertyId === propertyId &&
+        r.type !== 'owner_listing_fee' &&
+        r.requestType !== 'owner_listing_fee' &&
+        r.buyerPhone &&
+        r.buyerPhone.replace(/[\s-]/g, '') === cleanUserPhone &&
+        r.status === 'approved'
+    );
+  }
+
+  return false;
 }
 
 /**

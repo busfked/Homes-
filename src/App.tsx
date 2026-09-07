@@ -1199,8 +1199,9 @@ export default function App() {
               {filteredProperties.map((property) => {
                 const isUnlocked = isPropertyUnlockedForBuyer(
                   property.id,
-                  userPhone,
-                  unlockRequests
+                  currentUser?.phone || userPhone,
+                  unlockRequests,
+                  currentUser
                 );
 
                 return (
@@ -1307,8 +1308,9 @@ export default function App() {
                 currentUser?.unlockedPropertyIds?.includes(selectedPropertyForDetails.id) ||
                 isPropertyUnlockedForBuyer(
                   selectedPropertyForDetails.id,
-                  userPhone,
-                  unlockRequests
+                  currentUser?.phone || userPhone,
+                  unlockRequests,
+                  currentUser
                 )
               )
             : false
@@ -1422,12 +1424,15 @@ export default function App() {
           if (activeTab === 'my-requests') setActiveTab('browse');
         }}
         currentLang={currentLang}
-        userPhone={userPhone}
-        onUpdateUserPhone={(phone) => {
-          setUserPhone(phone);
-          saveUserPhone(phone);
-          showToast(currentLang === 'am' ? 'ስልክ ቁጥር ተቀምጧል' : 'Phone number saved');
+        currentUser={currentUser}
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          setUserPhone(user.phone);
+          saveUserPhone(user.phone);
+          saveActiveUserSession(user);
+          showToast(currentLang === 'am' ? `እንኳን ደህና መጡ ${user.name}!` : `Welcome ${user.name}!`);
         }}
+        onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
         unlockRequests={unlockRequests}
         properties={properties}
         onOpenHouseDetail={(prop) => setSelectedPropertyForDetails(prop)}
