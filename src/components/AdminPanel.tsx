@@ -28,7 +28,10 @@ import {
   UserCheck,
   Plus,
   LogOut,
-  ZoomIn
+  ZoomIn,
+  MoreVertical,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Property, UnlockRequest, PaymentSettings, Language, ReportedBroker, UserAccount } from '../types';
@@ -120,8 +123,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [enteredPin, setEnteredPin] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Active Admin Sub-Tab
+  // Active Admin Sub-Tab & 3-Dot Navigation
   const [activeAdminTab, setActiveAdminTab] = useState<'pending' | 'inventory' | 'users' | 'antifraud' | 'settings' | 'deploy'>('pending');
+  const [isNavMenuOpen, setIsNavMenuOpen] = useState(false);
+  const [isMetricsCompact, setIsMetricsCompact] = useState(true);
   const [depositFilter, setDepositFilter] = useState<'all' | 'owners' | 'users'>('all');
   const [registeredUsers, setRegisteredUsers] = useState<UserAccount[]>([]);
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -493,22 +498,22 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
       <div
         id="admin-panel-modal"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-stone-900 w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl border border-stone-200 dark:border-stone-800 flex flex-col max-h-[95vh]"
+        className="bg-white dark:bg-stone-900 w-full max-w-5xl rounded-3xl overflow-hidden shadow-2xl border border-stone-200 dark:border-stone-800 flex flex-col h-[94vh] sm:h-[90vh]"
       >
         {/* Admin Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-stone-200 dark:border-stone-800 bg-stone-950 text-white">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-xs">
-              <ShieldCheck className="w-6 h-6" />
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-stone-200 dark:border-stone-800 bg-stone-950 text-white gap-2">
+          <div className="flex items-center gap-2.5 sm:gap-3 truncate">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-xs shrink-0">
+              <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
+            <div className="truncate">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black tracking-tight">{t.adminTitle}</h2>
-                <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                <h2 className="text-base sm:text-lg font-black tracking-tight truncate">{t.adminTitle}</h2>
+                <span className="hidden sm:inline-block bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
                   Live Direct Deals Ops
                 </span>
               </div>
-              <p className="text-xs text-stone-400">{t.adminSubtitle}</p>
+              <p className="text-[11px] text-stone-400 truncate">{t.adminSubtitle}</p>
             </div>
           </div>
 
@@ -589,146 +594,356 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
         ) : (
           /* AUTHENTICATED ADMIN DASHBOARD */
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* Top Metrics Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 sm:p-6 bg-stone-50 dark:bg-stone-850 border-b border-stone-200 dark:border-stone-800">
-              <div className="bg-white dark:bg-stone-800 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-700 shadow-2xs">
-                <div className="flex items-center justify-between gap-1">
-                  <span className="text-[11px] text-stone-500 dark:text-stone-400 font-semibold block">{t.totalRevenue}</span>
+            {/* Screen-Fitting Compact Metrics Bar (with toggle for full cards) */}
+            <div className="px-4 py-2.5 sm:px-6 bg-stone-50 dark:bg-stone-850 border-b border-stone-200 dark:border-stone-800">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 sm:gap-4 text-xs font-bold flex-wrap">
+                  {/* Revenue pill */}
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 shadow-2xs">
+                    <span className="text-[10px] text-stone-500 dark:text-stone-400 font-semibold">{t.totalRevenue}:</span>
+                    <span className="font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">
+                      {isBalanceHidden ? '•••• ETB' : `${totalRevenueEtb.toLocaleString()} ETB`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={toggleHideBalance}
+                      className="text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 ml-0.5 cursor-pointer"
+                      title={isBalanceHidden ? 'Show' : 'Hide'}
+                    >
+                      {isBalanceHidden ? <EyeOff className="w-3 h-3 text-amber-500" /> : <Eye className="w-3 h-3" />}
+                    </button>
+                  </div>
+
+                  {/* Pending Payments pill */}
                   <button
                     type="button"
-                    onClick={toggleHideBalance}
-                    className="p-1 text-stone-400 hover:text-stone-700 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-700/60 rounded-md transition-colors cursor-pointer"
-                    title={isBalanceHidden ? (currentLang === 'am' ? 'ሒሳብ አሳይ (Show balance)' : 'Show balance') : (currentLang === 'am' ? 'ሒሳብ ደብቅ (Hide balance)' : 'Hide balance')}
+                    onClick={() => setActiveAdminTab('pending')}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-colors cursor-pointer text-xs font-bold ${
+                      activeAdminTab === 'pending'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 border-emerald-500 text-emerald-800 dark:text-emerald-200'
+                        : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:border-emerald-400'
+                    }`}
                   >
-                    {isBalanceHidden ? <EyeOff className="w-3.5 h-3.5 text-amber-500" /> : <Eye className="w-3.5 h-3.5 text-stone-400" />}
+                    <span className="text-[10px] text-stone-400">{t.pendingApprovals}:</span>
+                    <span className={`font-mono font-black ${pendingRequests.length > 0 ? 'text-emerald-600 animate-pulse' : 'text-stone-600'}`}>
+                      {pendingRequests.length}
+                    </span>
                   </button>
+
+                  {/* Active listings pill */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveAdminTab('inventory')}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border transition-colors cursor-pointer text-xs font-bold ${
+                      activeAdminTab === 'inventory'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/80 border-emerald-500 text-emerald-800 dark:text-emerald-200'
+                        : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-300 hover:border-emerald-400'
+                    }`}
+                  >
+                    <span className="text-[10px] text-stone-400">{t.activeHousesCount}:</span>
+                    <span className="font-mono font-black text-stone-900 dark:text-stone-100">
+                      {activeHouses.length}
+                    </span>
+                    {pendingHouses.length > 0 && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[9px] font-black animate-pulse">
+                        {pendingHouses.length} {currentLang === 'am' ? 'ይጽደቁ' : 'pending'}
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Occupied listings pill */}
+                  <div className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 text-xs">
+                    <span className="text-[10px] text-stone-400">{t.occupiedHousesCount}:</span>
+                    <span className="font-mono font-black text-stone-700 dark:text-stone-300">
+                      {occupiedHouses.length}
+                    </span>
+                  </div>
                 </div>
-                <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-sans mt-0.5">
-                  {isBalanceHidden ? (
-                    <span className="tracking-widest font-mono text-stone-400 dark:text-stone-500 text-base sm:text-lg">•••••• ETB</span>
-                  ) : (
-                    <>
-                      {totalRevenueEtb.toLocaleString()} <span className="text-xs">{t.etb}</span>
-                    </>
-                  )}
-                </div>
-                <span className="text-[10px] text-stone-400">
-                  {isBalanceHidden ? '•••• approvals' : `${approvedRequests.length} approvals`}
-                </span>
+
+                {/* Toggle full details view if needed */}
+                <button
+                  type="button"
+                  onClick={() => setIsMetricsCompact(!isMetricsCompact)}
+                  className="text-[11px] font-bold text-stone-500 hover:text-emerald-600 dark:text-stone-400 dark:hover:text-emerald-400 flex items-center gap-1 cursor-pointer ml-auto"
+                >
+                  <span>{isMetricsCompact ? (currentLang === 'am' ? 'ካርዶችን አሳይ' : 'Expand') : (currentLang === 'am' ? 'አሳጥር' : 'Compact')}</span>
+                  {isMetricsCompact ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                </button>
               </div>
 
-              <div className="bg-white dark:bg-stone-800 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-700 shadow-2xs">
-                <span className="text-[11px] text-stone-500 dark:text-stone-400 font-semibold block">{t.pendingApprovals}</span>
-                <div className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-sans mt-0.5">
-                  {pendingRequests.length}
-                </div>
-                <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium">Needs Screenshot Check</span>
-              </div>
+              {/* Expanded Detailed 4-Card View (shown only when expanded) */}
+              {!isMetricsCompact && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3 mt-2 border-t border-stone-200/60 dark:border-stone-800/60 animate-in fade-in">
+                  <div className="bg-white dark:bg-stone-800 p-3 rounded-xl border border-stone-200 dark:border-stone-700 shadow-2xs">
+                    <span className="text-[10px] text-stone-400 font-semibold block">{t.totalRevenue}</span>
+                    <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-sans mt-0.5">
+                      {isBalanceHidden ? '•••••• ETB' : `${totalRevenueEtb.toLocaleString()} ETB`}
+                    </div>
+                    <span className="text-[9px] text-stone-400">{approvedRequests.length} approvals</span>
+                  </div>
 
-              <div className="bg-white dark:bg-stone-800 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-700 shadow-2xs">
-                <span className="text-[11px] text-stone-500 dark:text-stone-400 font-semibold block">{t.activeHousesCount}</span>
-                <div className="text-xl sm:text-2xl font-black text-stone-900 dark:text-stone-100 font-sans mt-0.5">
-                  {activeHouses.length}
-                </div>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Within 7-Day Window</span>
-              </div>
+                  <div className="bg-white dark:bg-stone-800 p-3 rounded-xl border border-stone-200 dark:border-stone-700 shadow-2xs">
+                    <span className="text-[10px] text-stone-400 font-semibold block">{t.pendingApprovals}</span>
+                    <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-sans mt-0.5">
+                      {pendingRequests.length}
+                    </div>
+                    <span className="text-[9px] text-emerald-600">Pending screenshot verification</span>
+                  </div>
 
-              <div className="bg-white dark:bg-stone-800 p-3.5 rounded-2xl border border-stone-200 dark:border-stone-700 shadow-2xs">
-                <span className="text-[11px] text-stone-500 dark:text-stone-400 font-semibold block">{t.occupiedHousesCount}</span>
-                <div className="text-xl sm:text-2xl font-black text-stone-800 dark:text-stone-200 font-sans mt-0.5">
-                  {occupiedHouses.length}
+                  <div className="bg-white dark:bg-stone-800 p-3 rounded-xl border border-stone-200 dark:border-stone-700 shadow-2xs">
+                    <span className="text-[10px] text-stone-400 font-semibold block">{t.activeHousesCount}</span>
+                    <div className="text-lg font-black text-stone-900 dark:text-stone-100 font-sans mt-0.5">
+                      {activeHouses.length}
+                    </div>
+                    <span className="text-[9px] text-stone-400">Within 7-day window</span>
+                  </div>
+
+                  <div className="bg-white dark:bg-stone-800 p-3 rounded-xl border border-stone-200 dark:border-stone-700 shadow-2xs">
+                    <span className="text-[10px] text-stone-400 font-semibold block">{t.occupiedHousesCount}</span>
+                    <div className="text-lg font-black text-stone-800 dark:text-stone-200 font-sans mt-0.5">
+                      {occupiedHouses.length}
+                    </div>
+                    <span className="text-[9px] text-stone-400">Deals closed</span>
+                  </div>
                 </div>
-                <span className="text-[10px] text-stone-500 dark:text-stone-400">Deals Closed</span>
-              </div>
+              )}
             </div>
 
-            {/* Navigation Tabs */}
-            <div className="flex items-center gap-2 px-6 pt-3 border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 overflow-x-auto no-scrollbar">
-              <button
-                onClick={() => setActiveAdminTab('pending')}
-                className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                  activeAdminTab === 'pending'
-                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-                }`}
-              >
-                <span>{t.pendingPaymentsTab}</span>
-                {pendingRequests.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-emerald-600 text-white text-[10px]">
-                    {pendingRequests.length}
+            {/* Clean Responsive Navigation Bar with 3-Dot Selector */}
+            <div className="flex items-center justify-between px-4 sm:px-6 py-2.5 border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 gap-2">
+              {/* Left: Active Section Indicator & Quick Tabs */}
+              <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
+                {/* Active Section Badge */}
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 font-black text-xs shrink-0 shadow-2xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>
+                    {activeAdminTab === 'pending'
+                      ? (currentLang === 'am' ? '💳 የክፍያ ማረጋገጫዎች' : '💳 Payment Approvals')
+                      : activeAdminTab === 'inventory'
+                      ? (currentLang === 'am' ? '🏠 የቤቶች ዝርዝር' : '🏠 Listings')
+                      : activeAdminTab === 'users'
+                      ? (currentLang === 'am' ? '👥 ተጠቃሚዎች እና ቦታ' : '👥 Users & Space')
+                      : activeAdminTab === 'antifraud'
+                      ? (currentLang === 'am' ? '🚨 ማጭበርበር መከላከያ' : '🚨 Anti-Fraud')
+                      : activeAdminTab === 'settings'
+                      ? (currentLang === 'am' ? '⚙️ ክፍያ ቁጥሮች' : '⚙️ Payment Settings')
+                      : (currentLang === 'am' ? '🗄️ ሱፓቤዝ ዳታቤዝ' : '🗄️ Supabase DB')}
                   </span>
+                </div>
+
+                {/* Direct quick button: Payments */}
+                <button
+                  type="button"
+                  onClick={() => setActiveAdminTab('pending')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                    activeAdminTab === 'pending'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                  }`}
+                >
+                  <span>{t.pendingPaymentsTab}</span>
+                  {pendingRequests.length > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${activeAdminTab === 'pending' ? 'bg-white text-emerald-700' : 'bg-emerald-600 text-white'}`}>
+                      {pendingRequests.length}
+                    </span>
+                  )}
+                </button>
+
+                {/* Direct quick button: Inventory */}
+                <button
+                  type="button"
+                  onClick={() => setActiveAdminTab('inventory')}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                    activeAdminTab === 'inventory'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                  }`}
+                >
+                  <Building className="w-3.5 h-3.5" />
+                  <span>{t.allListingsTab}</span>
+                  {pendingHouses.length > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-black animate-pulse">
+                      {pendingHouses.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Right: The Requested 3-DOT MENU BUTTON to Choose What You Want */}
+              <div className="relative shrink-0">
+                <button
+                  id="btn-admin-nav-three-dots"
+                  type="button"
+                  onClick={() => setIsNavMenuOpen(!isNavMenuOpen)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                    isNavMenuOpen
+                      ? 'bg-emerald-600 text-white border-emerald-500'
+                      : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
+                  }`}
+                  title={currentLang === 'am' ? 'ክፍል ይምረጡ (3-Dot Menu)' : 'Choose section (3-Dot Menu)'}
+                  aria-label="Choose admin section"
+                >
+                  <MoreVertical className="w-4 h-4 text-emerald-500" />
+                  <span className="font-extrabold">{currentLang === 'am' ? 'ክፍል ምረጥ' : 'Sections'}</span>
+                  {pendingReports.length > 0 && (
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                  )}
+                </button>
+
+                {/* Floating 3-Dot Menu Popover */}
+                {isNavMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40"
+                      onClick={() => setIsNavMenuOpen(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-2 z-50 animate-in fade-in zoom-in-95">
+                      <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500 border-b border-stone-100 dark:border-stone-800 mb-1 flex items-center justify-between">
+                        <span>{currentLang === 'am' ? 'የአድሚን ክፍል ይምረጡ' : 'Choose Admin Section'}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">6 {currentLang === 'am' ? 'ክፍሎች' : 'Sections'}</span>
+                      </div>
+                      <div className="space-y-1">
+                        {/* 1. Pending Payments */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAdminTab('pending');
+                            setIsNavMenuOpen(false);
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-left flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                            activeAdminTab === 'pending'
+                              ? 'bg-emerald-600 text-white shadow-xs font-black'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <DollarSign className={`w-4 h-4 ${activeAdminTab === 'pending' ? 'text-white' : 'text-emerald-600'}`} />
+                            <span className="truncate">{t.pendingPaymentsTab}</span>
+                          </div>
+                          {pendingRequests.length > 0 && (
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${activeAdminTab === 'pending' ? 'bg-white text-emerald-700' : 'bg-emerald-600 text-white'}`}>
+                              {pendingRequests.length}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* 2. Listings & Approvals */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAdminTab('inventory');
+                            setIsNavMenuOpen(false);
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-left flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                            activeAdminTab === 'inventory'
+                              ? 'bg-emerald-600 text-white shadow-xs font-black'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <Building className={`w-4 h-4 ${activeAdminTab === 'inventory' ? 'text-white' : 'text-emerald-600'}`} />
+                            <span className="truncate">{t.allListingsTab}</span>
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {pendingHouses.length > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-black animate-pulse">
+                                {pendingHouses.length} {currentLang === 'am' ? 'ይጽደቁ' : 'pending'}
+                              </span>
+                            )}
+                            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${activeAdminTab === 'inventory' ? 'bg-white/30 text-white' : 'bg-stone-100 dark:bg-stone-800 text-stone-500'}`}>
+                              {properties.length}
+                            </span>
+                          </div>
+                        </button>
+
+                        {/* 3. Users & Space Saver */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAdminTab('users');
+                            setIsNavMenuOpen(false);
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-left flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                            activeAdminTab === 'users'
+                              ? 'bg-emerald-600 text-white shadow-xs font-black'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <Users className={`w-4 h-4 ${activeAdminTab === 'users' ? 'text-white' : 'text-emerald-600'}`} />
+                            <span className="truncate">{currentLang === 'am' ? 'ተጠቃሚዎች እና ቦታ ቆጣቢ' : 'Users & Space Saver'}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${activeAdminTab === 'users' ? 'bg-white text-emerald-700' : 'bg-stone-200 dark:bg-stone-700 text-stone-700 dark:text-stone-300'}`}>
+                            {registeredUsers.length}
+                          </span>
+                        </button>
+
+                        {/* 4. Anti-Fraud */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAdminTab('antifraud');
+                            setIsNavMenuOpen(false);
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-left flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                            activeAdminTab === 'antifraud'
+                              ? 'bg-rose-600 text-white shadow-xs font-black'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <ShieldAlert className={`w-4 h-4 ${activeAdminTab === 'antifraud' ? 'text-white' : 'text-rose-600'}`} />
+                            <span className="truncate">{t.antiFraudTab}</span>
+                          </div>
+                          {pendingReports.length > 0 && (
+                            <span className="px-2 py-0.5 rounded-full bg-rose-600 text-white text-[10px] font-black shrink-0">
+                              {pendingReports.length}
+                            </span>
+                          )}
+                        </button>
+
+                        {/* 5. Payment Settings */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAdminTab('settings');
+                            setIsNavMenuOpen(false);
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-left flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                            activeAdminTab === 'settings'
+                              ? 'bg-emerald-600 text-white shadow-xs font-black'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <Settings className={`w-4 h-4 ${activeAdminTab === 'settings' ? 'text-white' : 'text-stone-400'}`} />
+                            <span className="truncate">{t.settingsTab}</span>
+                          </div>
+                        </button>
+
+                        {/* 6. Deploy & Database */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAdminTab('deploy');
+                            setIsNavMenuOpen(false);
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-left flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                            activeAdminTab === 'deploy'
+                              ? 'bg-emerald-600 text-white shadow-xs font-black'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <Database className={`w-4 h-4 ${activeAdminTab === 'deploy' ? 'text-white' : 'text-emerald-600'}`} />
+                            <span className="truncate">{t.deployTab}</span>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )}
-              </button>
-
-              <button
-                onClick={() => setActiveAdminTab('inventory')}
-                className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                  activeAdminTab === 'inventory'
-                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-                }`}
-              >
-                <Building className="w-4 h-4" />
-                <span>{t.allListingsTab} ({properties.length})</span>
-                {pendingHouses.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-black animate-pulse">
-                    {pendingHouses.length} {currentLang === 'am' ? 'ይጽደቁ' : 'pending'}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveAdminTab('users')}
-                className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                  activeAdminTab === 'users'
-                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-                }`}
-              >
-                <Users className="w-4 h-4 text-emerald-600" />
-                <span>{currentLang === 'am' ? 'ተጠቃሚዎች እና ቦታ ቆጣቢ' : 'Users & Space Saver'} ({registeredUsers.length})</span>
-              </button>
-
-              <button
-                onClick={() => setActiveAdminTab('antifraud')}
-                className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                  activeAdminTab === 'antifraud'
-                    ? 'border-rose-600 text-rose-600 dark:text-rose-400'
-                    : 'border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-                }`}
-              >
-                <ShieldAlert className="w-4 h-4 text-rose-600" />
-                <span>{t.antiFraudTab}</span>
-                {pendingReports.length > 0 && (
-                  <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px]">
-                    {pendingReports.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                onClick={() => setActiveAdminTab('settings')}
-                className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                  activeAdminTab === 'settings'
-                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-                }`}
-              >
-                <Settings className="w-4 h-4" />
-                <span>{t.settingsTab}</span>
-              </button>
-
-              <button
-                onClick={() => setActiveAdminTab('deploy')}
-                className={`pb-3 px-3 text-xs sm:text-sm font-bold border-b-2 transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                  activeAdminTab === 'deploy'
-                    ? 'border-emerald-600 text-emerald-600 dark:text-emerald-400'
-                    : 'border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-800 dark:hover:text-stone-200'
-                }`}
-              >
-                <Database className="w-4 h-4 text-emerald-600" />
-                <span>{t.deployTab}</span>
-              </button>
+              </div>
             </div>
 
             {/* Sub-Tab Content Body */}

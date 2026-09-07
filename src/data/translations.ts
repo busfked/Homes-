@@ -1,9 +1,9 @@
 export const translations = {
   am: {
     // Header & Navigation
-    appTitle: 'ቤሴ መፍትሄ',
-    appSubtitle: 'ቤሴ ቤቶች፣ መኪኖች እና ማሽነሪዎች መፍትሄ • ቀጥታ ከባለቤቱ ጋር የሚያገናኝ',
-    brandFullName: 'ቤሴ ቤቶችና ዕቃዎች መፍትሄ (Bese Solutions)',
+    appTitle: 'በሴ የድለላ መፍትሄ',
+    appSubtitle: 'በሴ የድለላ መፍትሄ • ቤቶች፣ መኪኖች እና ማሽነሪዎች • ቀጥታ ከባለቤቱ',
+    brandFullName: 'በሴ የድለላ መፍትሄ (Bese Broker Solution)',
     browseHouses: 'ዝርዝሮችን ይመልከቱ',
     postHouse: 'ዕቃ / ቤት ያስመዝግቡ',
     ownerPortal: 'የባለቤት ማኔጀር',
@@ -307,9 +307,9 @@ export const translations = {
   },
   en: {
     // Header & Navigation
-    appTitle: 'Bese Solutions',
-    appSubtitle: 'Bese Home, Car & Machinery Solutions • Direct Owner Brokerage',
-    brandFullName: 'Bese Home Solutions (ቤሴ ቤቶች መፍትሄ)',
+    appTitle: 'Bese Broker Solution',
+    appSubtitle: 'Bese Broker Solution • Houses, Cars & Heavy Machinery • Direct Owner Access',
+    brandFullName: 'Bese Broker Solution (በሴ የድለላ መፍትሄ)',
     browseHouses: 'Browse Listings',
     postHouse: 'Post Listing',
     ownerPortal: 'Owner Manager',

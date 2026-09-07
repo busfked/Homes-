@@ -19,7 +19,7 @@ import {
 import { Property, Language, PaymentMethod, UnlockRequest, PaymentSettings, UserAccount } from '../types';
 import { translations } from '../data/translations';
 import { compressImage } from '../utils/imageCompressor';
-import { isPhoneBanned, loginOrRegisterUser } from '../utils/storage';
+import { isPhoneBanned, loginOrRegisterUser, getEligiblePackageForPrice, getPackageChoiceInfo } from '../utils/storage';
 import { calculateHouseUnlockFee, formatEtbPrice, getTierForProperty } from '../utils/pricing';
 
 interface UnlockPaymentModalProps {
@@ -32,6 +32,7 @@ interface UnlockPaymentModalProps {
   currentUser?: UserAccount | null;
   onOpenUserAuthModal?: () => void;
   onSubmitUnlockRequest: (request: UnlockRequest) => void;
+  onUseCreditToUnlock?: (property: Property) => void;
 }
 
 export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
@@ -44,6 +45,7 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
   currentUser,
   onOpenUserAuthModal,
   onSubmitUnlockRequest,
+  onUseCreditToUnlock,
 }) => {
   if (!isOpen || !property) return null;
 
@@ -240,6 +242,54 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
                 <span>{errorMsg}</span>
               </div>
             )}
+
+            {/* If user already has an active package covering this property, let them unlock instantly for free! */}
+            {(() => {
+              const eligiblePackage = getEligiblePackageForPrice(currentUser, property.price, property.listingType);
+              if (!eligiblePackage) return null;
+              const choiceInfo = getPackageChoiceInfo(
+                eligiblePackage.remainingUnlocks,
+                eligiblePackage.totalPurchased || 5,
+                currentLang
+              );
+
+              return (
+                <div className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/60 dark:to-teal-950/50 border-2 border-emerald-400 dark:border-emerald-600 rounded-2xl space-y-3 shadow-sm animate-in zoom-in-95">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-200 text-xs font-black">
+                        <span>{currentLang === 'am' ? 'የተከፈለ ንቁ ጥቅል አለዎት!' : 'You Have an Active Package!'}</span>
+                      </div>
+                      <h4 className="font-extrabold text-stone-900 dark:text-white text-sm mt-1">
+                        {choiceInfo.chooseLabel}
+                      </h4>
+                      <p className="text-xs text-stone-600 dark:text-stone-300 mt-0.5">
+                        {currentLang === 'am'
+                          ? `በዚህ የዋጋ ደረጃ ውስጥ ${eligiblePackage.remainingUnlocks} የቀሩ ቤቶች አሉዎት። ገንዘብ መክፈል አያስፈልግዎትም!`
+                          : `You have ${eligiblePackage.remainingUnlocks} remaining unlock credits for this price range. No payment required!`}
+                      </p>
+                    </div>
+                    <span className="shrink-0 px-2.5 py-1 rounded-xl bg-emerald-600 text-white font-mono text-xs font-black">
+                      {eligiblePackage.remainingUnlocks} {currentLang === 'am' ? 'ቀረ' : 'left'}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onUseCreditToUnlock) {
+                        onUseCreditToUnlock(property);
+                      }
+                      onClose();
+                    }}
+                    className="w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-sm font-black flex items-center justify-center gap-2 shadow-md cursor-pointer border border-emerald-400"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                    <span>{choiceInfo.buttonLabel}</span>
+                  </button>
+                </div>
+              );
+            })()}
 
             {/* Targeted Property & Direct Unlock Fee Banner */}
             <div className="bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 p-4 rounded-2xl flex items-center justify-between gap-3 text-xs">

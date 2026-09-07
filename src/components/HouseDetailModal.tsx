@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { Property, Language, UserAccount } from '../types';
 import { translations } from '../data/translations';
-import { getDaysRemaining } from '../utils/storage';
+import { getDaysRemaining, getPackageChoiceInfo, getEligiblePackageForPrice } from '../utils/storage';
 import { formatEtbPrice, calculateHouseUnlockFee } from '../utils/pricing';
 import { PROPERTY_TYPES, CAR_TYPES, MACHINERY_TYPES } from '../data/addisAreas';
 
@@ -427,36 +427,76 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
             </div>
           ) : (() => {
             // Check if user has an active package that covers this property's price range
-            const matchingPackage = currentUser?.packages?.find(
-              (p) =>
-                p.remainingUnlocks > 0 &&
-                (p.tierId === 'tier_unlimited' ||
-                  (property.listingType === 'sale'
-                    ? p.tierId === 'tier_sale' || p.maxPrice >= 500000
-                    : property.price <= p.maxPrice))
-            );
+            const matchingPackage = getEligiblePackageForPrice(currentUser, property.price, property.listingType);
 
             if (matchingPackage) {
+              const choiceInfo = getPackageChoiceInfo(
+                matchingPackage.remainingUnlocks,
+                matchingPackage.totalPurchased || 5,
+                currentLang
+              );
+
               return (
-                <div className="bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-400 dark:border-emerald-600 rounded-2xl p-5 sm:p-6 space-y-4 shadow-xs animate-in zoom-in-95 duration-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                        <Sparkles className="w-5 h-5 text-white" />
+                <div className="bg-gradient-to-br from-emerald-50 to-teal-50/70 dark:from-stone-850 dark:to-emerald-950/40 border-2 border-emerald-400 dark:border-emerald-600 rounded-2xl p-5 sm:p-6 space-y-4 shadow-sm animate-in zoom-in-95 duration-200">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                        <Sparkles className="w-6 h-6 text-amber-200 animate-pulse" />
                       </div>
                       <div>
-                        <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-sm sm:text-base">
-                          {currentLang === 'am' ? 'የተከፈለ ንቁ ጥቅል አለዎት!' : 'Active Range Unlock Package!'}
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-900/60 text-emerald-900 dark:text-emerald-200 text-xs font-black mb-1">
+                          <span>{currentLang === 'am' ? 'የ 5 ቤቶች ጥቅል ክፍለ ጊዜ' : '5-Home Package Active'}</span>
+                        </div>
+                        <h4 className="font-black text-stone-900 dark:text-stone-100 text-base">
+                          {choiceInfo.chooseLabel}
                         </h4>
-                        <p className="text-xs text-stone-600 dark:text-stone-300">
-                          {currentLang === 'am'
-                            ? `በዚህ የዋጋ ደረጃ ውስጥ ተጨማሪ ${matchingPackage.remainingUnlocks} ቤቶችን ያለተጨማሪ ክፍያ መክፈት ይችላሉ።`
-                            : `You have ${matchingPackage.remainingUnlocks} remaining unlock credits for this similar price range.`}
+                        <p className="text-xs text-stone-600 dark:text-stone-300 mt-1 leading-relaxed">
+                          {choiceInfo.bannerText}
                         </p>
                       </div>
                     </div>
-                    <div className="shrink-0 px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-black text-xs font-mono shadow-xs">
-                      {matchingPackage.remainingUnlocks} {currentLang === 'am' ? 'ቀረ' : 'left'}
+                    <div className="shrink-0 text-center bg-white dark:bg-stone-800 px-3 py-2 rounded-xl border border-emerald-300 dark:border-emerald-700 shadow-2xs">
+                      <span className="text-xs text-stone-500 dark:text-stone-400 block font-bold">
+                        {currentLang === 'am' ? 'ቀሪ ዕድል' : 'Remaining'}
+                      </span>
+                      <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                        {matchingPackage.remainingUnlocks} / {matchingPackage.totalPurchased || 5}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* 5-Home Visual Step Indicator */}
+                  <div className="bg-white/80 dark:bg-stone-800/80 p-3 rounded-xl border border-emerald-200 dark:border-emerald-800/60">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-stone-600 dark:text-stone-300 mb-2">
+                      <span>{currentLang === 'am' ? 'የ 5 ቤቶች ደረጃ፦' : '5 Homes Progress:'}</span>
+                      <span className="text-emerald-700 dark:text-emerald-300 font-extrabold">
+                        {choiceInfo.ordinalAm || choiceInfo.ordinalEn} {currentLang === 'am' ? 'ቤት በመምረጥ ላይ' : 'House Selecting'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[1, 2, 3, 4, 5].map((stepNum) => {
+                        const isPast = stepNum < choiceInfo.homeNumber;
+                        const isCurrent = stepNum === choiceInfo.homeNumber;
+                        return (
+                          <div
+                            key={stepNum}
+                            className={`py-1.5 px-1 rounded-lg text-center text-[10px] font-black transition-all ${
+                              isPast
+                                ? 'bg-emerald-600 text-white shadow-2xs'
+                                : isCurrent
+                                ? 'bg-amber-400 text-stone-950 ring-2 ring-emerald-500 animate-pulse font-extrabold'
+                                : 'bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400'
+                            }`}
+                          >
+                            <span className="block truncate">
+                              {stepNum} {currentLang === 'am' ? 'ቤት' : 'Home'}
+                            </span>
+                            <span className="text-[9px] block opacity-90">
+                              {isPast ? '✓' : isCurrent ? '★' : '•'}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -467,14 +507,10 @@ export const HouseDetailModal: React.FC<HouseDetailModalProps> = ({
                         onUseCreditToUnlock(property);
                       }
                     }}
-                    className="w-full py-4 px-5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-xl text-base font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+                    className="w-full py-3.5 px-5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-98 text-white rounded-xl text-sm font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer border border-emerald-400"
                   >
                     <CheckCircle2 className="w-5 h-5 text-emerald-200" />
-                    <span>
-                      {currentLang === 'am'
-                        ? `በ 1 ክሬዲት የባለቤቱን ስልክ ይክፈቱ (${matchingPackage.remainingUnlocks} ይቀራል)`
-                        : `Use 1 Credit to Unlock Owner Contact (${matchingPackage.remainingUnlocks} remaining)`}
-                    </span>
+                    <span>{choiceInfo.buttonLabel}</span>
                   </button>
                 </div>
               );

@@ -21,9 +21,9 @@ import {
   Share2,
   Phone
 } from 'lucide-react';
-import { Property, Language } from '../types';
+import { Property, Language, UserAccount } from '../types';
 import { translations } from '../data/translations';
-import { getDaysRemaining } from '../utils/storage';
+import { getDaysRemaining, getEligiblePackageForPrice, getPackageChoiceInfo } from '../utils/storage';
 import { formatEtbPrice } from '../utils/pricing';
 import { PROPERTY_TYPES, CAR_TYPES, MACHINERY_TYPES } from '../data/addisAreas';
 
@@ -31,8 +31,10 @@ interface HouseCardProps {
   property: Property;
   currentLang: Language;
   isUnlocked: boolean;
+  currentUser?: UserAccount | null;
   onOpenDetails: (property: Property) => void;
   onOpenUnlockModal: (property: Property) => void;
+  onUseCreditToUnlock?: (property: Property) => void;
   onOpenOwnerManageForProperty?: (property: Property) => void;
   onShare?: (property: Property) => void;
 }
@@ -41,12 +43,22 @@ export const HouseCard: React.FC<HouseCardProps> = ({
   property,
   currentLang,
   isUnlocked,
+  currentUser,
   onOpenDetails,
   onOpenUnlockModal,
+  onUseCreditToUnlock,
   onShare,
 }) => {
   const t = translations[currentLang];
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  // Check if user has an active package covering this property's price range
+  const eligiblePackage = !isUnlocked
+    ? getEligiblePackageForPrice(currentUser, property.price, property.listingType)
+    : null;
+  const choiceInfo = eligiblePackage
+    ? getPackageChoiceInfo(eligiblePackage.remainingUnlocks, eligiblePackage.totalPurchased || 5, currentLang)
+    : null;
 
   const images = property.images && property.images.length > 0 ? property.images : [
     {
@@ -366,6 +378,23 @@ export const HouseCard: React.FC<HouseCardProps> = ({
                 <div className="w-full py-2.5 px-3 bg-stone-100 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-500 dark:text-stone-400 text-xs font-bold flex items-center justify-center gap-1.5">
                   <span>{t.occupiedStatus}</span>
                 </div>
+              ) : eligiblePackage && choiceInfo ? (
+                <button
+                  id={`credit-unlock-btn-${property.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onUseCreditToUnlock) {
+                      onUseCreditToUnlock(property);
+                    } else {
+                      onOpenDetails(property);
+                    }
+                  }}
+                  className="w-full py-2.5 px-3 bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-98 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer border border-emerald-300 dark:border-emerald-500 animate-in fade-in"
+                  title={choiceInfo.buttonLabel}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-200 animate-pulse shrink-0" />
+                  <span className="truncate">{choiceInfo.buttonLabel}</span>
+                </button>
               ) : (
                 <button
                   id={`unlock-btn-${property.id}`}

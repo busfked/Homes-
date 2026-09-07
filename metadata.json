@@ -1,6 +1,7 @@
 {
-  "name": "BetDelala Ethiopian House Broker",
-  "description": "Addis Ababa broker platform for Homes, Cars, and Heavy Machinery (Bese Home Solutions / ቤሴ መፍትሄ) with direct owner contact unlock (100 ETB rent / 500 ETB sale), seller listing fee approval, dark mode, automated image compression, and Amharic support.",
+  "name": "Bese Broker Solution | በሴ የድለላ መፍትሄ",
+  "description": "Bese Broker Solution (በሴ የድለላ መፍትሄ) - Addis Ababa direct broker platform for Houses, Cars, and Heavy Machinery with direct owner contact unlock packages, listings, and Amharic support.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
+

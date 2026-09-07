@@ -1,4 +1,4 @@
-import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId } from '../types';
+import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId, Language } from '../types';
 import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS } from '../data/sampleListings';
 import { PRICE_TIERS } from './pricing';
 import {
@@ -404,18 +404,63 @@ export function isPropertyUnlockedForUser(propertyId: string, user: UserAccount 
 }
 
 /**
+ * Helper to compute countdown and choice numbering (e.g. Choose 2nd Home, Choose 3rd Home, etc.)
+ */
+export function getPackageChoiceInfo(
+  remainingUnlocks: number,
+  totalPurchased: number = 5,
+  currentLang: Language = 'am'
+) {
+  // If package started with 5:
+  // After home 1, 4 remain -> next is Home 2 ("Choose 2nd Home")
+  // After home 2, 3 remain -> next is Home 3 ("Choose 3rd Home")
+  // After home 3, 2 remain -> next is Home 4 ("Choose 4th Home")
+  // After home 4, 1 remains -> next is Home 5 ("Choose 5th Home")
+  // 0 remain -> Package exhausted, lock contacts again
+  const homeNumber = Math.min(5, Math.max(1, (totalPurchased - remainingUnlocks) + 1));
+  const ordinalEn = homeNumber === 1 ? '1st' : homeNumber === 2 ? '2nd' : homeNumber === 3 ? '3rd' : homeNumber === 4 ? '4th' : '5th';
+  const ordinalAm = `${homeNumber}ኛ`;
+
+  return {
+    homeNumber,
+    ordinalAm,
+    ordinalEn,
+    remainingUnlocks,
+    chooseLabel: currentLang === 'am'
+      ? `${ordinalAm} ቤት ምረጥ (${remainingUnlocks} ይቀራል)`
+      : `Choose ${ordinalEn} Home (${remainingUnlocks} left)`,
+    buttonLabel: currentLang === 'am'
+      ? `✨ ${ordinalAm}ውን ቤት በነጻ ክፈት (${remainingUnlocks} ይቀራል)`
+      : `✨ Choose ${ordinalEn} Home - Free Unlock (${remainingUnlocks} left)`,
+    bannerText: currentLang === 'am'
+      ? `የተከፈለ ንቁ ጥቅል አለዎት! ${ordinalAm}ውን ቤት ያለተጨማሪ ክፍያ ይክፈቱ (${remainingUnlocks} ይቀራል)`
+      : `Active Package! Unlock your ${ordinalEn} home for free (${remainingUnlocks} left)`,
+  };
+}
+
+/**
  * Checks if user has an active credit package that can unlock a house of this price
  */
-export function getEligiblePackageForPrice(user: UserAccount, price: number, listingType?: string): UserCreditPackage | null {
+export function getEligiblePackageForPrice(
+  user: UserAccount | null | undefined,
+  price: number,
+  listingType?: string
+): UserCreditPackage | null {
   if (!user || !user.packages || user.packages.length === 0) return null;
 
   for (const pkg of user.packages) {
     if (pkg.remainingUnlocks > 0) {
-      if (listingType === 'sale' && pkg.tierId === 'tier_unlimited') {
+      if (pkg.tierId === 'tier_unlimited') {
         return pkg;
       }
-      if (price <= pkg.maxPrice) {
-        return pkg;
+      if (listingType === 'sale') {
+        if (pkg.tierId === 'tier_sale' || (pkg.maxPrice && pkg.maxPrice >= 500000)) {
+          return pkg;
+        }
+      } else {
+        if (price <= (pkg.maxPrice || 999999999)) {
+          return pkg;
+        }
       }
     }
   }

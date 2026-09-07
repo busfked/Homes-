@@ -690,7 +690,7 @@ export default function App() {
       setIsUserAuthModalOpen(true);
       return;
     }
-    const res = unlockPropertyWithCredit(currentUser.id, property.id, property.price);
+    const res = unlockPropertyWithCredit(currentUser.id, property.id, property.price, property.listingType);
     if (res.success && res.updatedUser) {
       setCurrentUser(res.updatedUser);
       saveUserToSupabase(res.updatedUser).catch(console.warn);
@@ -1210,8 +1210,10 @@ export default function App() {
                     property={property}
                     currentLang={currentLang}
                     isUnlocked={isUnlocked}
+                    currentUser={currentUser}
                     onOpenDetails={(p) => setSelectedPropertyForDetails(p)}
                     onOpenUnlockModal={(p) => setSelectedPropertyForUnlock(p)}
+                    onUseCreditToUnlock={handleUseCreditToUnlock}
                     onOpenOwnerManageForProperty={(p) => {
                       setSelectedPropertyForOwnerManage(p);
                       setIsOwnerManageModalOpen(true);
@@ -1357,6 +1359,7 @@ export default function App() {
         currentUser={currentUser}
         onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
         onSubmitUnlockRequest={handleSubmitUnlockRequest}
+        onUseCreditToUnlock={handleUseCreditToUnlock}
       />
 
       {/* 4. Owner Management Modal (Occupied deal & 7-day renewal & Add New Home) */}
