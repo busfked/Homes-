@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Property, UnlockRequest, UserAccount } from '../types';
+import { Property, UnlockRequest, UserAccount, Review } from '../types';
 import { getSupabaseConfig, saveSupabaseConfig } from './storage';
 
 // Direct production Supabase connection credentials directly in code - no .env required!
@@ -688,6 +688,99 @@ export async function saveUserUnlockedPropertyToSupabase(userPhone: string, prop
     return true;
   } catch (err) {
     console.warn('saveUserUnlockedPropertyToSupabase error:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetch all verified customer reviews from Supabase
+ */
+export async function fetchReviewsFromSupabase(): Promise<Review[] | null> {
+  const supabase = getSupabase();
+  if (!supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      if (error.code === 'PGRST205' || error.message?.includes('does not exist')) {
+        console.debug('Supabase reviews table not yet created.');
+        return null;
+      }
+      console.warn('fetchReviewsFromSupabase error:', error.message);
+      return null;
+    }
+
+    if (!data) return [];
+
+    return data.map((row: any) => ({
+      id: row.id,
+      userName: row.user_name || 'Anonymous',
+      userPhone: row.user_phone || undefined,
+      userRole: row.user_role || 'buyer',
+      rating: Number(row.rating) || 5,
+      comment: row.comment || '',
+      createdAt: row.created_at || new Date().toISOString(),
+      isApproved: row.is_approved !== false,
+      status: row.status || 'active',
+    }));
+  } catch (err) {
+    console.warn('fetchReviewsFromSupabase catch:', err);
+    return null;
+  }
+}
+
+/**
+ * Save or update a review in Supabase
+ */
+export async function saveReviewToSupabase(review: Review): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+
+  try {
+    const row = {
+      id: review.id,
+      user_name: review.userName,
+      user_phone: review.userPhone || null,
+      user_role: review.userRole,
+      rating: review.rating,
+      comment: review.comment,
+      created_at: review.createdAt,
+      is_approved: review.isApproved !== false,
+      status: review.status || 'active',
+    };
+
+    const { error } = await supabase.from('reviews').upsert(row);
+    if (error) {
+      console.warn('saveReviewToSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('saveReviewToSupabase catch:', err);
+    return false;
+  }
+}
+
+/**
+ * Delete a review from Supabase
+ */
+export async function deleteReviewFromSupabase(reviewId: string): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+
+  try {
+    const { error } = await supabase.from('reviews').delete().eq('id', reviewId);
+    if (error) {
+      console.warn('deleteReviewFromSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('deleteReviewFromSupabase catch:', err);
     return false;
   }
 }

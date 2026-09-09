@@ -31,10 +31,11 @@ import {
   ZoomIn,
   MoreVertical,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Star
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Property, UnlockRequest, PaymentSettings, Language, ReportedBroker, UserAccount } from '../types';
+import { Property, UnlockRequest, PaymentSettings, Language, ReportedBroker, UserAccount, Review } from '../types';
 import { translations } from '../data/translations';
 import { ErrorBoundary } from './ErrorBoundary';
 import { 
@@ -84,6 +85,9 @@ interface AdminPanelProps {
   onResolveReport?: (reportId: string, action: 'ban' | 'dismiss') => void;
   onManualSync?: () => Promise<void>;
   onOpenPostPropertyAsAdmin?: () => void;
+  reviews?: Review[];
+  onToggleReviewApproval?: (reviewId: string) => void;
+  onDeleteReview?: (reviewId: string) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -112,6 +116,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onResolveReport,
   onManualSync,
   onOpenPostPropertyAsAdmin,
+  reviews = [],
+  onToggleReviewApproval,
+  onDeleteReview,
 }) => {
   if (!isOpen) return null;
 
@@ -124,7 +131,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [loginError, setLoginError] = useState('');
 
   // Active Admin Sub-Tab & 3-Dot Navigation
-  const [activeAdminTab, setActiveAdminTab] = useState<'pending' | 'inventory' | 'users' | 'antifraud' | 'settings' | 'deploy'>('pending');
+  const [activeAdminTab, setActiveAdminTab] = useState<'pending' | 'inventory' | 'users' | 'reviews' | 'antifraud' | 'settings' | 'deploy'>('pending');
   const [isNavMenuOpen, setIsNavMenuOpen] = useState(false);
   const [isMetricsCompact, setIsMetricsCompact] = useState(true);
   const [depositFilter, setDepositFilter] = useState<'all' | 'owners' | 'users'>('all');
@@ -723,6 +730,8 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                       ? (currentLang === 'am' ? '🏠 የቤቶች ዝርዝር' : '🏠 Listings')
                       : activeAdminTab === 'users'
                       ? (currentLang === 'am' ? '👥 ተጠቃሚዎች እና ቦታ' : '👥 Users & Space')
+                      : activeAdminTab === 'reviews'
+                      ? (currentLang === 'am' ? '⭐ የደንበኞች አስተያየት' : '⭐ Customer Reviews')
                       : activeAdminTab === 'antifraud'
                       ? (currentLang === 'am' ? '🚨 ማጭበርበር መከላከያ' : '🚨 Anti-Fraud')
                       : activeAdminTab === 'settings'
@@ -800,7 +809,7 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                     <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-2 z-50 animate-in fade-in zoom-in-95">
                       <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500 border-b border-stone-100 dark:border-stone-800 mb-1 flex items-center justify-between">
                         <span>{currentLang === 'am' ? 'የአድሚን ክፍል ይምረጡ' : 'Choose Admin Section'}</span>
-                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">6 {currentLang === 'am' ? 'ክፍሎች' : 'Sections'}</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">7 {currentLang === 'am' ? 'ክፍሎች' : 'Sections'}</span>
                       </div>
                       <div className="space-y-1">
                         {/* 1. Pending Payments */}
@@ -878,7 +887,29 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                           </span>
                         </button>
 
-                        {/* 4. Anti-Fraud */}
+                        {/* 4. Customer Reviews & Ratings */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveAdminTab('reviews');
+                            setIsNavMenuOpen(false);
+                          }}
+                          className={`w-full px-3 py-2.5 rounded-xl text-left flex items-center justify-between text-xs font-bold transition-all cursor-pointer ${
+                            activeAdminTab === 'reviews'
+                              ? 'bg-amber-500 text-stone-950 shadow-xs font-black'
+                              : 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <Star className={`w-4 h-4 ${activeAdminTab === 'reviews' ? 'text-stone-950 fill-stone-950' : 'text-amber-500 fill-amber-400'}`} />
+                            <span className="truncate">{currentLang === 'am' ? 'የደንበኞች አስተያየት (Reviews)' : 'Customer Reviews'}</span>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black shrink-0 ${activeAdminTab === 'reviews' ? 'bg-stone-950 text-white' : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'}`}>
+                            {reviews.length}
+                          </span>
+                        </button>
+
+                        {/* 5. Anti-Fraud */}
                         <button
                           type="button"
                           onClick={() => {
@@ -2421,6 +2452,187 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                       </li>
                     </ol>
                   </div>
+                </div>
+              )}
+
+              {/* TAB: CUSTOMER REVIEWS & RATINGS MODERATION */}
+              {activeAdminTab === 'reviews' && (
+                <div className="space-y-6">
+                  {/* Reviews Summary Stats */}
+                  <div className="bg-amber-50/60 dark:bg-amber-950/20 p-5 rounded-2xl border border-amber-200/60 dark:border-amber-800/40 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/60 dark:border-amber-800/40">
+                      <div>
+                        <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-sm flex items-center gap-2">
+                          <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                          <span>
+                            {currentLang === 'am'
+                              ? 'የደንበኞች ደረጃ እና አስተያየት አስተዳደር'
+                              : 'Customer Reviews & Rating Moderation'}
+                          </span>
+                        </h4>
+                        <p className="text-xs text-stone-600 dark:text-stone-400 mt-0.5">
+                          {currentLang === 'am'
+                            ? 'በተጠቃሚዎች የተሰጡ ደረጃዎችን ይመልከቱ፣ ያረጋግጡ ወይም የማያስፈልጉትን ያስወግዱ።'
+                            : 'Monitor customer satisfaction, moderate inappropriate reviews, or delete fake entries.'}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-stone-950 shadow-xs">
+                          {reviews.length} {currentLang === 'am' ? 'አስተያየቶች' : 'Reviews'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Stats Metrics Bar */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="bg-white dark:bg-stone-850 p-3 rounded-xl border border-stone-200 dark:border-stone-700 text-center">
+                        <div className="text-xl font-black text-amber-600 dark:text-amber-400 flex items-center justify-center gap-1">
+                          <span>
+                            {reviews.length > 0
+                              ? (
+                                  reviews.reduce((acc, r) => acc + r.rating, 0) /
+                                  reviews.length
+                                ).toFixed(1)
+                              : '5.0'}
+                          </span>
+                          <Star className="w-4 h-4 fill-amber-400" />
+                        </div>
+                        <span className="text-[10px] text-stone-500 font-bold uppercase">
+                          {currentLang === 'am' ? 'አማካይ ደረጃ' : 'Average Rating'}
+                        </span>
+                      </div>
+
+                      <div className="bg-white dark:bg-stone-850 p-3 rounded-xl border border-stone-200 dark:border-stone-700 text-center">
+                        <div className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                          {reviews.filter((r) => r.rating === 5).length}
+                        </div>
+                        <span className="text-[10px] text-stone-500 font-bold uppercase">
+                          {currentLang === 'am' ? '5-ኮከብ ብቻ' : '5-Star Ratings'}
+                        </span>
+                      </div>
+
+                      <div className="bg-white dark:bg-stone-850 p-3 rounded-xl border border-stone-200 dark:border-stone-700 text-center">
+                        <div className="text-xl font-black text-indigo-600 dark:text-indigo-400">
+                          {reviews.filter((r) => r.userRole === 'owner').length}
+                        </div>
+                        <span className="text-[10px] text-stone-500 font-bold uppercase">
+                          {currentLang === 'am' ? 'የባለቤቶች' : 'Owner Reviews'}
+                        </span>
+                      </div>
+
+                      <div className="bg-white dark:bg-stone-850 p-3 rounded-xl border border-stone-200 dark:border-stone-700 text-center">
+                        <div className="text-xl font-black text-blue-600 dark:text-blue-400">
+                          {reviews.filter((r) => r.userRole === 'renter' || r.userRole === 'buyer').length}
+                        </div>
+                        <span className="text-[10px] text-stone-500 font-bold uppercase">
+                          {currentLang === 'am' ? 'የተከራይ/ገዢዎች' : 'Tenants & Buyers'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Reviews List */}
+                  {reviews.length === 0 ? (
+                    <div className="text-center py-12 border border-dashed border-stone-300 dark:border-stone-700 rounded-2xl space-y-2">
+                      <Star className="w-8 h-8 text-stone-300 dark:text-stone-600 mx-auto" />
+                      <p className="text-xs font-bold text-stone-500">
+                        {currentLang === 'am'
+                          ? 'እስካሁን ምንም የደንበኛ አስተያየት አልተመዘገበም።'
+                          : 'No reviews recorded yet.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {reviews.map((rev) => (
+                        <div
+                          key={rev.id}
+                          className="bg-stone-50 dark:bg-stone-850 p-4 rounded-2xl border border-stone-200 dark:border-stone-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                        >
+                          <div className="space-y-1.5 flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-extrabold text-sm text-stone-900 dark:text-stone-100 truncate">
+                                {rev.userName}
+                              </span>
+                              {rev.userPhone && (
+                                <span className="text-xs font-mono text-stone-500 bg-stone-200 dark:bg-stone-800 px-2 py-0.5 rounded-md">
+                                  📞 {rev.userPhone}
+                                </span>
+                              )}
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300">
+                                {rev.userRole}
+                              </span>
+                              <div className="flex items-center gap-0.5 ml-1">
+                                {[1, 2, 3, 4, 5].map((s) => (
+                                  <Star
+                                    key={s}
+                                    className={`w-3.5 h-3.5 ${
+                                      s <= rev.rating
+                                        ? 'text-amber-400 fill-amber-400'
+                                        : 'text-stone-300 dark:text-stone-700'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            <p className="text-xs text-stone-700 dark:text-stone-300 leading-relaxed font-medium">
+                              "{rev.comment}"
+                            </p>
+
+                            <div className="text-[10px] text-stone-400 font-medium">
+                              {new Date(rev.createdAt).toLocaleString(
+                                currentLang === 'am' ? 'am-ET' : 'en-US'
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            {onToggleReviewApproval && (
+                              <button
+                                type="button"
+                                onClick={() => onToggleReviewApproval(rev.id)}
+                                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                                  rev.isApproved !== false
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 hover:bg-emerald-200'
+                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 hover:bg-amber-200'
+                                }`}
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                                <span>
+                                  {rev.isApproved !== false
+                                    ? (currentLang === 'am' ? 'የተረጋገጠ' : 'Visible')
+                                    : (currentLang === 'am' ? 'የተደበቀ' : 'Hidden')}
+                                </span>
+                              </button>
+                            )}
+
+                            {onDeleteReview && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (
+                                    window.confirm(
+                                      currentLang === 'am'
+                                        ? `ይህንን አስተያየት መሰረዝ ይፈልጋሉ?`
+                                        : `Are you sure you want to delete this review?`
+                                    )
+                                  ) {
+                                    onDeleteReview(rev.id);
+                                  }
+                                }}
+                                className="p-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60 transition-all cursor-pointer"
+                                title={currentLang === 'am' ? 'አስተያየቱን ሰርዝ' : 'Delete Review'}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -26,7 +26,8 @@ import {
   PropertyType, 
   ListingType,
   ReportedBroker,
-  UserAccount
+  UserAccount,
+  Review
 } from './types';
 import { 
   getStoredProperties, 
@@ -55,7 +56,12 @@ import {
   creditPackageToUserPhone,
   creditSinglePropertyUnlockToUser,
   getStoredUsers,
-  saveUsers
+  saveUsers,
+  getStoredReviews,
+  saveStoredReviews,
+  addReview,
+  deleteStoredReview,
+  toggleReviewApproval
 } from './utils/storage';
 import {
   fetchPropertiesFromSupabase,
@@ -72,7 +78,10 @@ import {
   fetchUserByPhoneFromSupabase,
   saveUserToSupabase,
   saveUserUnlockedPropertyToSupabase,
-  wipeAllTestDataFromSupabase
+  wipeAllTestDataFromSupabase,
+  fetchReviewsFromSupabase,
+  saveReviewToSupabase,
+  deleteReviewFromSupabase
 } from './utils/supabaseClient';
 import { getTierForProperty, PRICE_TIERS } from './utils/pricing';
 import { translations } from './data/translations';
@@ -88,6 +97,8 @@ import { MyRequestsModal } from './components/MyRequestsModal';
 import { ReportBrokerModal } from './components/ReportBrokerModal';
 import { UserAuthModal } from './components/UserAuthModal';
 import { ShareModal } from './components/ShareModal';
+import { ReviewsSection } from './components/ReviewsSection';
+import { AddReviewModal } from './components/AddReviewModal';
 import { parseSearchFiltersFromUrl, SearchFilterState } from './utils/shareUtils';
 
 export default function App() {
@@ -156,6 +167,10 @@ export default function App() {
   const [isMyRequestsModalOpen, setIsMyRequestsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isUserAuthModalOpen, setIsUserAuthModalOpen] = useState(false);
+  
+  // Customer Reviews State
+  const [reviews, setReviews] = useState<Review[]>(() => getStoredReviews());
+  const [isAddReviewModalOpen, setIsAddReviewModalOpen] = useState(false);
   
   // Social Media Sharing State
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -359,6 +374,17 @@ export default function App() {
           setCurrentUser(updatedSelf);
           saveActiveUserSession(updatedSelf);
         }
+      }
+
+      // 4. REVIEWS: Fetch verified reviews from Supabase
+      try {
+        const remoteReviews = await fetchReviewsFromSupabase();
+        if (remoteReviews && Array.isArray(remoteReviews) && remoteReviews.length > 0) {
+          setReviews(remoteReviews);
+          saveStoredReviews(remoteReviews);
+        }
+      } catch (revErr) {
+        console.warn('Supabase reviews sync notice:', revErr);
       }
 
       lastSyncTimeRef.current = Date.now();
@@ -957,6 +983,48 @@ export default function App() {
     );
   };
 
+  // Review & Star Rating Handlers
+  const handleAddReview = (newRevData: Omit<Review, 'id' | 'createdAt'>) => {
+    const createdReview = addReview(newRevData);
+    setReviews(getStoredReviews());
+    saveReviewToSupabase(createdReview).catch((err) => {
+      console.warn('Supabase save review notice:', err);
+    });
+    showToast(
+      currentLang === 'am'
+        ? 'አስተያየትዎ እና ደረጃዎ በተሳካ ሁኔታ ተመዝግቧል! እናመሰግናለን።'
+        : 'Thank you! Your review and rating have been posted.'
+    );
+  };
+
+  const handleDeleteReview = (reviewId: string) => {
+    deleteStoredReview(reviewId);
+    setReviews(getStoredReviews());
+    deleteReviewFromSupabase(reviewId).catch(console.warn);
+    showToast(
+      currentLang === 'am'
+        ? 'አስተያየቱ በተሳካ ሁኔታ ተሰርዟል!'
+        : 'Review deleted successfully.'
+    );
+  };
+
+  const handleToggleReviewApproval = (reviewId: string) => {
+    toggleReviewApproval(reviewId);
+    const updated = getStoredReviews();
+    setReviews(updated);
+    const changed = updated.find((r) => r.id === reviewId);
+    if (changed) {
+      saveReviewToSupabase(changed).catch(console.warn);
+    }
+  };
+
+  const handleScrollToReviews = () => {
+    setActiveTab('browse');
+    setTimeout(() => {
+      document.getElementById('customer-reviews-section')?.scrollIntoView({ behavior: 'smooth' });
+    }, 150);
+  };
+
   // Filtered Properties Computation
   const filteredProperties = useMemo(() => {
     return properties.filter((p) => {
@@ -1063,6 +1131,7 @@ export default function App() {
           showToast(currentLang === 'am' ? 'ዝርዝሮችን በማደስ ላይ...' : 'Refreshing listings...');
           syncFromSupabase(true);
         }}
+        onScrollToReviews={handleScrollToReviews}
       />
 
       {/* Main Content Area */}
@@ -1225,6 +1294,15 @@ export default function App() {
             </div>
           )}
         </section>
+
+        {/* Customer Star Reviews & Testimonials Section */}
+        {activeTab === 'browse' && (
+          <ReviewsSection
+            currentLang={currentLang}
+            reviews={reviews}
+            onOpenAddReviewModal={() => setIsAddReviewModalOpen(true)}
+          />
+        )}
       </main>
 
       {/* Footer */}
@@ -1412,6 +1490,9 @@ export default function App() {
         onRejectProperty={handleRejectProperty}
         onApproveAllPendingProperties={handleApproveAllPendingProperties}
         onWipeAllTestData={handleWipeAllTestData}
+        reviews={reviews}
+        onToggleReviewApproval={handleToggleReviewApproval}
+        onDeleteReview={handleDeleteReview}
         onOpenPostPropertyAsAdmin={() => {
           setIsAdminPanelOpen(false);
           setIsAdminPosting(true);
@@ -1499,6 +1580,15 @@ export default function App() {
         searchFilters={currentSearchFilters}
         totalResultsCount={filteredProperties.length}
         currentLang={currentLang}
+      />
+
+      {/* 10. Add Customer Review & Star Rating Modal */}
+      <AddReviewModal
+        isOpen={isAddReviewModalOpen}
+        onClose={() => setIsAddReviewModalOpen(false)}
+        currentLang={currentLang}
+        currentUser={currentUser}
+        onAddReview={handleAddReview}
       />
     </div>
   );

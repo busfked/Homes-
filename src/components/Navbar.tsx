@@ -14,7 +14,8 @@ import {
   Globe,
   Phone,
   ShieldCheck,
-  Check
+  Check,
+  Star
 } from 'lucide-react';
 import { Language, Theme, UserAccount } from '../types';
 import { translations } from '../data/translations';
@@ -34,6 +35,7 @@ interface NavbarProps {
   onToggleDataSaver?: () => void;
   isSyncing?: boolean;
   onManualRefresh?: () => void;
+  onScrollToReviews?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -51,6 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleDataSaver,
   isSyncing = false,
   onManualRefresh,
+  onScrollToReviews,
 }) => {
   const t = translations[currentLang];
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -156,6 +159,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <Receipt className="w-4 h-4 text-stone-500 dark:text-stone-400" />
                 <span>{t.myRequests}</span>
+              </button>
+
+              <button
+                id="nav-reviews"
+                onClick={() => {
+                  if (onScrollToReviews) {
+                    onScrollToReviews();
+                  } else {
+                    handleNavClick('browse');
+                    setTimeout(() => {
+                      document.getElementById('customer-reviews-section')?.scrollIntoView({ behavior: 'smooth' });
+                    }, 100);
+                  }
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-stone-600 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-stone-800 transition-all cursor-pointer"
+              >
+                <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                <span>{t.reviewsTab}</span>
               </button>
             </nav>
 
@@ -514,6 +535,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                   >
                     <Receipt className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     <span>{t.myRequests}</span>
+                  </button>
+
+                  <button
+                    id="mobile-nav-reviews"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      if (onScrollToReviews) {
+                        onScrollToReviews();
+                      } else {
+                        handleNavClick('browse');
+                        setTimeout(() => {
+                          document.getElementById('customer-reviews-section')?.scrollIntoView({ behavior: 'smooth' });
+                        }, 120);
+                      }
+                    }}
+                    className="w-full py-2.5 px-3 rounded-xl text-xs font-bold text-left flex items-center gap-2.5 transition-colors cursor-pointer text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800"
+                  >
+                    <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                    <span>{t.reviewsTab}</span>
                   </button>
                 </div>
 

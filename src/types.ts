@@ -165,3 +165,17 @@ export interface ReportedBroker {
   status: 'pending_review' | 'banned' | 'dismissed';
 }
 
+export type ReviewUserRole = 'buyer' | 'renter' | 'owner' | 'client';
+
+export interface Review {
+  id: string;
+  userName: string;
+  userPhone?: string;
+  userRole: ReviewUserRole;
+  rating: number; // 1 to 5
+  comment: string;
+  createdAt: string; // ISO string
+  isApproved?: boolean;
+  status?: 'active' | 'hidden';
+}
+

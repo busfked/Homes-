@@ -1,5 +1,5 @@
-import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId, Language } from '../types';
-import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS } from '../data/sampleListings';
+import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId, Language, Review } from '../types';
+import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS, SAMPLE_REVIEWS } from '../data/sampleListings';
 import { PRICE_TIERS } from './pricing';
 import {
   idbSaveProperties,
@@ -20,6 +20,7 @@ const STORAGE_KEYS = {
   BANNED_PHONES: 'betdelala_banned_phones_v2',
   REPORTED_BROKERS: 'betdelala_reported_brokers_v2',
   OWNER_PROFILES: 'betdelala_owner_profiles_v1',
+  REVIEWS: 'betdelala_reviews_v1',
 };
 
 /**
@@ -1014,11 +1015,69 @@ export function cleanupExpiredListings(properties: Property[]): {
 }
 
 /**
+ * Reviews Storage Management (Local Storage + Supabase sync)
+ */
+export function getStoredReviews(): Review[] {
+  try {
+    if (typeof localStorage === 'undefined') return SAMPLE_REVIEWS;
+    const raw = localStorage.getItem(STORAGE_KEYS.REVIEWS);
+    if (!raw) {
+      localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(SAMPLE_REVIEWS));
+      return SAMPLE_REVIEWS;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : SAMPLE_REVIEWS;
+  } catch (err) {
+    console.error('Failed to parse reviews:', err);
+    return SAMPLE_REVIEWS;
+  }
+}
+
+export function saveStoredReviews(reviews: Review[]): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(reviews));
+  } catch (err) {
+    console.error('Failed to save reviews:', err);
+  }
+}
+
+export function addReview(newReview: Omit<Review, 'id' | 'createdAt'>): Review {
+  const current = getStoredReviews();
+  const created: Review = {
+    ...newReview,
+    id: `rev-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    createdAt: new Date().toISOString(),
+    isApproved: true,
+    status: 'active',
+  };
+  const updated = [created, ...current];
+  saveStoredReviews(updated);
+  return created;
+}
+
+export function deleteStoredReview(reviewId: string): Review[] {
+  const current = getStoredReviews();
+  const updated = current.filter((r) => r.id !== reviewId);
+  saveStoredReviews(updated);
+  return updated;
+}
+
+export function toggleReviewApproval(reviewId: string): Review[] {
+  const current = getStoredReviews();
+  const updated = current.map((r) =>
+    r.id === reviewId ? { ...r, isApproved: !r.isApproved } : r
+  );
+  saveStoredReviews(updated);
+  return updated;
+}
+
+/**
  * SQL Schema for Supabase Free Tier setup
  */
 export const SUPABASE_SQL_SCHEMA = `-- =========================================================
--- BETDELALA ETHIOPIAN HOUSE BROKER - SUPABASE FREE TIER SQL
--- Run this in your Supabase SQL Editor (100% Free Tier Compatible)
+-- BESE BROKER SOLUTION (በሴ የድለላ መፍትሄ) - SUPABASE 100% FREE TIER SQL
+-- Run this in your Supabase SQL Editor
 -- =========================================================
 
 -- 1. Create Properties Table
@@ -1125,13 +1184,27 @@ CREATE TABLE IF NOT EXISTS public.banned_phones (
   banned_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. Enable Row Level Security (RLS) & Public Policies
+-- 6. Create Customer Reviews Table (Ratings & Verified Feedback)
+CREATE TABLE IF NOT EXISTS public.reviews (
+  id TEXT PRIMARY KEY,
+  user_name TEXT NOT NULL,
+  user_phone TEXT,
+  user_role TEXT NOT NULL DEFAULT 'buyer',
+  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  is_approved BOOLEAN DEFAULT TRUE,
+  status TEXT DEFAULT 'active'
+);
+
+-- 7. Enable Row Level Security (RLS) & Public Policies
 ALTER TABLE public.properties ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.unlock_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reported_brokers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.banned_phones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
 -- Properties Policies
 DROP POLICY IF EXISTS "Public read active properties" ON public.properties;
@@ -1158,7 +1231,7 @@ CREATE POLICY "Public Insert Unlock Requests" ON public.unlock_requests FOR INSE
 CREATE POLICY "Public Update Unlock Requests" ON public.unlock_requests FOR UPDATE USING (true);
 CREATE POLICY "Public Delete Unlock Requests" ON public.unlock_requests FOR DELETE USING (true);
 
--- Users Policies (Allows user creation, updates, and admin space-saving deletion)
+-- Users Policies
 DROP POLICY IF EXISTS "Public user operations" ON public.users;
 DROP POLICY IF EXISTS "Public Read Users" ON public.users;
 DROP POLICY IF EXISTS "Public Insert Users" ON public.users;
@@ -1187,4 +1260,14 @@ DROP POLICY IF EXISTS "Public Read Banned" ON public.banned_phones;
 DROP POLICY IF EXISTS "Public Insert Banned" ON public.banned_phones;
 CREATE POLICY "Public Read Banned" ON public.banned_phones FOR SELECT USING (true);
 CREATE POLICY "Public Insert Banned" ON public.banned_phones FOR INSERT WITH CHECK (true);
+
+-- Reviews Policies
+DROP POLICY IF EXISTS "Public Read Reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Public Insert Reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Public Update Reviews" ON public.reviews;
+DROP POLICY IF EXISTS "Public Delete Reviews" ON public.reviews;
+CREATE POLICY "Public Read Reviews" ON public.reviews FOR SELECT USING (true);
+CREATE POLICY "Public Insert Reviews" ON public.reviews FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Reviews" ON public.reviews FOR UPDATE USING (true);
+CREATE POLICY "Public Delete Reviews" ON public.reviews FOR DELETE USING (true);
 `;
