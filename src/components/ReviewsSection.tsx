@@ -7,12 +7,14 @@ interface ReviewsSectionProps {
   currentLang: Language;
   reviews: Review[];
   onOpenAddReviewModal: () => void;
+  onOpenAdminReviews?: () => void;
 }
 
 export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
   currentLang,
   reviews,
   onOpenAddReviewModal,
+  onOpenAdminReviews,
 }) => {
   const t = translations[currentLang];
   const [selectedFilter, setSelectedFilter] = useState<'all' | '5star' | '4plus' | 'renter_buyer' | 'owner'>('all');
@@ -102,14 +104,28 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
             </p>
           </div>
 
-          <button
-            id="btn-open-add-review-modal"
-            onClick={onOpenAddReviewModal}
-            className="self-start sm:self-auto px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-950 rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-amber-500/20 flex items-center gap-2 cursor-pointer transition-all shrink-0"
-          >
-            <MessageSquarePlus className="w-4 h-4" />
-            <span>{t.writeReview}</span>
-          </button>
+          <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+            {onOpenAdminReviews && (
+              <button
+                type="button"
+                onClick={onOpenAdminReviews}
+                className="px-3.5 py-2.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-stone-200 dark:border-stone-700 shadow-2xs"
+                title={currentLang === 'am' ? 'የባለቤት/አድሚን አስተያየት ማስተዳደሪያ (አስተያየት ለመሰረዝ)' : 'Owner / Admin Review Moderation (to delete or moderate reviews)'}
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>{t.ownerModeration}</span>
+              </button>
+            )}
+
+            <button
+              id="btn-open-add-review-modal"
+              onClick={onOpenAddReviewModal}
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-stone-950 rounded-xl text-xs sm:text-sm font-bold shadow-md shadow-amber-500/20 flex items-center gap-2 cursor-pointer transition-all shrink-0"
+            >
+              <MessageSquarePlus className="w-4 h-4" />
+              <span>{t.writeReview}</span>
+            </button>
+          </div>
         </div>
 
         {/* Rating Summary Card */}

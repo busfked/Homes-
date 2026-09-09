@@ -333,6 +333,7 @@ export async function wipeAllTestDataFromSupabase(): Promise<{ success: boolean;
     try { await supabase.from('user_unlocked_properties').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear user_unlocked_properties notice:', e); }
     try { await supabase.from('user_packages').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear user_packages notice:', e); }
     try { await supabase.from('reported_brokers').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear reported_brokers notice:', e); }
+    try { await supabase.from('reviews').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear reviews notice:', e); }
     try { await supabase.from('users').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear users notice:', e); }
     try { await supabase.from('properties').delete().neq('id', '00000000-0000-0000-0000-000000000000'); } catch (e) { console.debug('Clear properties notice:', e); }
     return { success: true, message: 'All test data wiped from Supabase successfully' };
@@ -784,3 +785,27 @@ export async function deleteReviewFromSupabase(reviewId: string): Promise<boolea
     return false;
   }
 }
+
+/**
+ * Delete ALL customer reviews from Supabase (Admin/Owner action)
+ */
+export async function deleteAllReviewsFromSupabase(): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) return false;
+
+  try {
+    const { error } = await supabase
+      .from('reviews')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+    if (error) {
+      console.warn('deleteAllReviewsFromSupabase error:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn('deleteAllReviewsFromSupabase catch:', err);
+    return false;
+  }
+}
+

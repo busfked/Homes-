@@ -61,6 +61,7 @@ import {
   saveStoredReviews,
   addReview,
   deleteStoredReview,
+  clearAllStoredReviews,
   toggleReviewApproval
 } from './utils/storage';
 import {
@@ -81,7 +82,8 @@ import {
   wipeAllTestDataFromSupabase,
   fetchReviewsFromSupabase,
   saveReviewToSupabase,
-  deleteReviewFromSupabase
+  deleteReviewFromSupabase,
+  deleteAllReviewsFromSupabase
 } from './utils/supabaseClient';
 import { getTierForProperty, PRICE_TIERS } from './utils/pricing';
 import { translations } from './data/translations';
@@ -164,6 +166,7 @@ export default function App() {
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [isOwnerManageModalOpen, setIsOwnerManageModalOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [adminInitialTab, setAdminInitialTab] = useState<'pending' | 'inventory' | 'users' | 'reviews' | 'antifraud' | 'settings' | 'deploy'>('pending');
   const [isMyRequestsModalOpen, setIsMyRequestsModalOpen] = useState(false);
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isUserAuthModalOpen, setIsUserAuthModalOpen] = useState(false);
@@ -1018,6 +1021,26 @@ export default function App() {
     }
   };
 
+  const handleDeleteAllReviews = async () => {
+    clearAllStoredReviews();
+    setReviews([]);
+    try {
+      await deleteAllReviewsFromSupabase();
+    } catch (err) {
+      console.warn('Supabase delete all reviews exception:', err);
+    }
+    showToast(
+      currentLang === 'am'
+        ? 'ሁሉም አስተያየቶች በተሳካ ሁኔታ ተሰርዘዋል!'
+        : 'All customer reviews have been deleted successfully.'
+    );
+  };
+
+  const handleOpenAdminReviews = () => {
+    setAdminInitialTab('reviews');
+    setIsAdminPanelOpen(true);
+  };
+
   const handleScrollToReviews = () => {
     setActiveTab('browse');
     setTimeout(() => {
@@ -1301,6 +1324,7 @@ export default function App() {
             currentLang={currentLang}
             reviews={reviews}
             onOpenAddReviewModal={() => setIsAddReviewModalOpen(true)}
+            onOpenAdminReviews={handleOpenAdminReviews}
           />
         )}
       </main>
@@ -1493,6 +1517,8 @@ export default function App() {
         reviews={reviews}
         onToggleReviewApproval={handleToggleReviewApproval}
         onDeleteReview={handleDeleteReview}
+        onDeleteAllReviews={handleDeleteAllReviews}
+        initialTab={adminInitialTab}
         onOpenPostPropertyAsAdmin={() => {
           setIsAdminPanelOpen(false);
           setIsAdminPosting(true);

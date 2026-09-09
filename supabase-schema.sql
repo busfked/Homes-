@@ -176,7 +176,23 @@ CREATE TABLE IF NOT EXISTS public.banned_phones (
     banned_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 9. SAFE IDEMPOTENT COLUMN ADDITIONS
+-- 9. CUSTOMER REVIEWS & STAR RATINGS
+CREATE TABLE IF NOT EXISTS public.reviews (
+    id TEXT PRIMARY KEY,
+    author_name TEXT NOT NULL,
+    user_role TEXT NOT NULL DEFAULT 'renter_buyer',
+    phone TEXT,
+    rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+    comment TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    is_approved BOOLEAN DEFAULT TRUE,
+    status TEXT DEFAULT 'active'
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_created_at ON public.reviews (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_reviews_rating ON public.reviews (rating DESC);
+
+-- 10. SAFE IDEMPOTENT COLUMN ADDITIONS
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS unlocked_property_ids JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS packages JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
@@ -204,6 +220,7 @@ ALTER TABLE public.payment_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reported_brokers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.banned_phones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 
 -- Properties Policies
 DROP POLICY IF EXISTS "Public read active properties" ON public.properties;
@@ -261,3 +278,14 @@ CREATE POLICY "Public broker reports" ON public.reported_brokers FOR ALL USING (
 
 DROP POLICY IF EXISTS "Public banned phones read" ON public.banned_phones;
 CREATE POLICY "Public banned phones read" ON public.banned_phones FOR ALL USING (true);
+
+-- Reviews Policies
+DROP POLICY IF EXISTS "Public reviews are readable by everyone" ON public.reviews;
+DROP POLICY IF EXISTS "Anyone can submit a review" ON public.reviews;
+DROP POLICY IF EXISTS "Allow update for moderation" ON public.reviews;
+DROP POLICY IF EXISTS "Allow deletion of reviews" ON public.reviews;
+CREATE POLICY "Public reviews are readable by everyone" ON public.reviews FOR SELECT USING (true);
+CREATE POLICY "Anyone can submit a review" ON public.reviews FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow update for moderation" ON public.reviews FOR UPDATE USING (true);
+CREATE POLICY "Allow deletion of reviews" ON public.reviews FOR DELETE USING (true);
+

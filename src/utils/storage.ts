@@ -1063,6 +1063,15 @@ export function deleteStoredReview(reviewId: string): Review[] {
   return updated;
 }
 
+export function clearAllStoredReviews(): void {
+  try {
+    localStorage.removeItem('betdelala_customer_reviews');
+    localStorage.setItem('betdelala_customer_reviews', JSON.stringify([]));
+  } catch (err) {
+    console.error('Failed to clear stored reviews:', err);
+  }
+}
+
 export function toggleReviewApproval(reviewId: string): Review[] {
   const current = getStoredReviews();
   const updated = current.map((r) =>

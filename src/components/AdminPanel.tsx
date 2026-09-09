@@ -88,6 +88,8 @@ interface AdminPanelProps {
   reviews?: Review[];
   onToggleReviewApproval?: (reviewId: string) => void;
   onDeleteReview?: (reviewId: string) => void;
+  onDeleteAllReviews?: () => Promise<void> | void;
+  initialTab?: 'pending' | 'inventory' | 'users' | 'reviews' | 'antifraud' | 'settings' | 'deploy';
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -119,6 +121,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   reviews = [],
   onToggleReviewApproval,
   onDeleteReview,
+  onDeleteAllReviews,
+  initialTab,
 }) => {
   if (!isOpen) return null;
 
@@ -131,13 +135,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [loginError, setLoginError] = useState('');
 
   // Active Admin Sub-Tab & 3-Dot Navigation
-  const [activeAdminTab, setActiveAdminTab] = useState<'pending' | 'inventory' | 'users' | 'reviews' | 'antifraud' | 'settings' | 'deploy'>('pending');
+  const [activeAdminTab, setActiveAdminTab] = useState<'pending' | 'inventory' | 'users' | 'reviews' | 'antifraud' | 'settings' | 'deploy'>(initialTab || 'pending');
   const [isNavMenuOpen, setIsNavMenuOpen] = useState(false);
   const [isMetricsCompact, setIsMetricsCompact] = useState(true);
   const [depositFilter, setDepositFilter] = useState<'all' | 'owners' | 'users'>('all');
   const [registeredUsers, setRegisteredUsers] = useState<UserAccount[]>([]);
   const [userSearchTerm, setUserSearchTerm] = useState('');
   const [spaceNotice, setSpaceNotice] = useState<string | null>(null);
+
+  // Reviews deletion state
+  const [deleteConfirmReviewId, setDeleteConfirmReviewId] = useState<string | null>(null);
+  const [showDeleteAllReviewsModal, setShowDeleteAllReviewsModal] = useState(false);
+  const [isDeletingReviews, setIsDeletingReviews] = useState(false);
 
   // Deletion and wipe state
   const [deleteConfirmUserPhone, setDeleteConfirmUserPhone] = useState<string | null>(null);
@@ -223,8 +232,27 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   React.useEffect(() => {
+    if (initialTab) {
+      setActiveAdminTab(initialTab);
+    }
+  }, [initialTab]);
+
+  React.useEffect(() => {
     refreshUserList();
   }, [isAdminLoggedIn, activeAdminTab]);
+
+  const handleExecuteDeleteAllReviews = async () => {
+    if (!onDeleteAllReviews) return;
+    try {
+      setIsDeletingReviews(true);
+      await onDeleteAllReviews();
+      setShowDeleteAllReviewsModal(false);
+    } catch (err) {
+      console.error('Error executing delete all reviews:', err);
+    } finally {
+      setIsDeletingReviews(false);
+    }
+  };
 
   const handleDeleteUser = (userIdOrPhone: string, userName: string) => {
     if (deleteConfirmUserPhone === userIdOrPhone) {
@@ -2477,10 +2505,22 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                         </p>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-stone-950 shadow-xs">
                           {reviews.length} {currentLang === 'am' ? 'አስተያየቶች' : 'Reviews'}
                         </span>
+
+                        {onDeleteAllReviews && reviews.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowDeleteAllReviewsModal(true)}
+                            className="px-3 py-1 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-full text-xs font-black flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                            title={currentLang === 'am' ? 'ሁሉንም አስተያየቶች ሰርዝ' : 'Delete All Reviews'}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>{currentLang === 'am' ? 'ሁሉንም ሰርዝ' : 'Delete All'}</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -2609,24 +2649,38 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                             )}
 
                             {onDeleteReview && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (
-                                    window.confirm(
-                                      currentLang === 'am'
-                                        ? `ይህንን አስተያየት መሰረዝ ይፈልጋሉ?`
-                                        : `Are you sure you want to delete this review?`
-                                    )
-                                  ) {
-                                    onDeleteReview(rev.id);
-                                  }
-                                }}
-                                className="p-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60 transition-all cursor-pointer"
-                                title={currentLang === 'am' ? 'አስተያየቱን ሰርዝ' : 'Delete Review'}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <div>
+                                {deleteConfirmReviewId === rev.id ? (
+                                  <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/60 p-1 rounded-xl border border-rose-200 dark:border-rose-900 animate-in fade-in">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        onDeleteReview(rev.id);
+                                        setDeleteConfirmReviewId(null);
+                                      }}
+                                      className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                    >
+                                      {currentLang === 'am' ? 'አዎ፣ ሰርዝ' : 'Confirm'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setDeleteConfirmReviewId(null)}
+                                      className="px-2 py-1 bg-stone-200 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                                    >
+                                      {currentLang === 'am' ? 'ይቅር' : 'Cancel'}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmReviewId(rev.id)}
+                                    className="p-2 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/60 transition-all cursor-pointer"
+                                    title={currentLang === 'am' ? 'አስተያየቱን ሰርዝ' : 'Delete Review'}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
                         </div>
@@ -2776,6 +2830,66 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                   <>
                     <Trash2 className="w-4 h-4" />
                     <span>{currentLang === 'am' ? 'አዎ፣ ሙሉ በሙሉ አጽዳ' : 'Yes, Wipe Clean'}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All Reviews Confirmation Modal (Owner Only) */}
+      {showDeleteAllReviewsModal && (
+        <div
+          onClick={() => !isDeletingReviews && setShowDeleteAllReviewsModal(false)}
+          className="fixed inset-0 z-70 bg-black/85 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white dark:bg-stone-900 rounded-3xl overflow-hidden max-w-md w-full p-6 space-y-4 border border-rose-200 dark:border-rose-900 shadow-2xl"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-base">
+                {currentLang === 'am'
+                  ? 'ሁሉንም አስተያየቶች መሰረዝ ይፈልጋሉ?'
+                  : 'Delete All Customer Reviews?'}
+              </h4>
+              <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                {currentLang === 'am'
+                  ? `ይህ እርምጃ በአጠቃላይ የተመዘገቡትን ${reviews.length} የደንበኛ አስተያየቶች ከዳታቤዝ (Supabase & Local) እስከመጨረሻው ይሰርዛል። ይህን ማድረግ የሚችሉት እርስዎ የሲስተሙ ባለቤት ብቻ ነዎት።`
+                  : `This will permanently delete all ${reviews.length} customer reviews from both your Supabase database and local storage. Only you, the system owner, can execute this action.`}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteAllReviewsModal(false)}
+                disabled={isDeletingReviews}
+                className="flex-1 py-3 px-4 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                {currentLang === 'am' ? 'ይቅር (Cancel)' : 'Cancel'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteDeleteAllReviews}
+                disabled={isDeletingReviews || reviews.length === 0}
+                className="flex-1 py-3 px-4 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isDeletingReviews ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>{currentLang === 'am' ? 'በመሰረዝ ላይ...' : 'Deleting...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>{currentLang === 'am' ? 'አዎ፣ ሁሉንም ሰርዝ' : 'Yes, Delete All'}</span>
                   </>
                 )}
               </button>

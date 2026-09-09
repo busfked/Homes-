@@ -335,6 +335,12 @@ export const translations = {
     filter4PlusStars: '4+ ኮከብ',
     filterTenantsBuyers: 'ተከራዮች እና ገዢዎች',
     filterOwners: 'ባለቤቶች',
+    deleteAllReviews: 'ሁሉንም አስተያየቶች ሰርዝ (Delete All)',
+    confirmDeleteAllReviews: 'ሁሉንም አስተያየቶች መሰረዝ እርግጠኛ ነዎት?',
+    deleteAllReviewsWarning: 'ይህ እርምጃ ሁሉንም የደንበኛ አስተያየቶች ከዳታቤዝ (Supabase & Local) እስከመጨረሻው ይሰርዛል። ሊመለስ አይችልም።',
+    allReviewsDeletedSuccess: 'ሁሉም አስተያየቶች በተሳካ ሁኔታ ተሰርዘዋል!',
+    ownerModeration: 'የባለቤት ማስተዳደሪያ (Owner Admin)',
+    ownerOnlyNotice: 'አስተያየቶችን ማስተዳደር እና መሰረዝ የሚችለው ባለቤቱ (Admin) ብቻ ነው።',
   },
   en: {
     // Header & Navigation
@@ -672,5 +678,11 @@ export const translations = {
     filter4PlusStars: '4+ Stars',
     filterTenantsBuyers: 'Tenants & Buyers',
     filterOwners: 'Owners',
+    deleteAllReviews: 'Delete All Reviews',
+    confirmDeleteAllReviews: 'Are you sure you want to delete all reviews?',
+    deleteAllReviewsWarning: 'This action will permanently delete all customer reviews from both database (Supabase) and local storage. It cannot be undone.',
+    allReviewsDeletedSuccess: 'All customer reviews have been deleted successfully!',
+    ownerModeration: 'Owner Review Moderation',
+    ownerOnlyNotice: 'Only the system owner (Admin) can moderate and delete reviews.',
   },
 };
