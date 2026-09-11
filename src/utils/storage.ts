@@ -1,6 +1,7 @@
 import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId, Language, Review } from '../types';
 import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS, SAMPLE_REVIEWS } from '../data/sampleListings';
 import { PRICE_TIERS } from './pricing';
+import { hasUserUsedPromo } from './promo';
 import {
   idbSaveProperties,
   idbGetProperties,
@@ -641,6 +642,144 @@ export function creditSinglePropertyUnlockToUser(
   return { success: true, updatedUser };
 }
 
+/**
+ * Claim 1-Time 100 Launch Promo: 5 Homes Free for User.
+ * USER ONLY ENTERS PHONE AND PASSWORD.
+ * NO APPROVAL REQUIRED FOR USER - Access is granted instantly!
+ * If user passes autoUnlockPropertyId, that property is unlocked immediately!
+ * 1-Time Use Only! Next time user must pay money and upload screenshot.
+ */
+export function claimUserPromo5Homes(
+  phone: string,
+  pin: string,
+  autoUnlockPropertyId?: string,
+  propertyPrice: number = 0,
+  listingType?: string
+): { success: boolean; message: string; user?: UserAccount; promoRequest?: UnlockRequest } {
+  const cleanPhone = (phone || '').trim().replace(/[\s-]/g, '');
+  if (!cleanPhone || cleanPhone.length < 9) {
+    return { 
+      success: false, 
+      message: 'እባክዎ ትክክለኛ ስልክ ቁጥርዎን ያስገቡ (Please enter a valid phone number).' 
+    };
+  }
+
+  if (isPhoneBanned(cleanPhone)) {
+    return { 
+      success: false, 
+      message: 'ይህ ስልክ ቁጥር በደንብ መተላለፍ ምክንያት ታግዷል። (This phone number has been suspended).' 
+    };
+  }
+
+  const cleanPin = (pin || '').trim() || '1234';
+
+  const allUsers = getStoredUsers();
+  const allRequests = getStoredUnlockRequests();
+
+  // 1-Time Use Only check
+  if (hasUserUsedPromo(cleanPhone, allUsers, allRequests)) {
+    return {
+      success: false,
+      message: 'ይህ ስልክ ቁጥር ቀደም ሲል የ1 ጊዜ የ5 ቤቶች ነፃ ዕድል (100 Promo) ተጠቅሟል። ለቀጣይ ቤቶች እባክዎ ክፍያ በመፈፀም ስክሪንሽት ያስገቡ። (This phone has already used the 1-time 5-home free promo. Next time, payment and screenshot are required).',
+    };
+  }
+
+  // Initial remaining unlocks: 5 homes
+  let remainingUnlocks = 5;
+  const unlockedIds: string[] = [];
+
+  // If user is currently unlocking a specific property right now, unlock it instantly!
+  if (autoUnlockPropertyId) {
+    unlockedIds.push(autoUnlockPropertyId);
+    remainingUnlocks = 4; // 1 used immediately, 4 remain!
+  }
+
+  const promoPackage: UserCreditPackage = {
+    id: `pkg-promo-${Date.now().toString(36)}`,
+    tierId: 'tier_unlimited',
+    tierName: '100 Promo (5 Free Homes)',
+    maxPrice: 999999999,
+    remainingUnlocks: remainingUnlocks,
+    totalPurchased: 5,
+    purchasedAt: new Date().toISOString(),
+    isPromo: true,
+  };
+
+  let userIdx = allUsers.findIndex(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+  let updatedUser: UserAccount;
+
+  if (userIdx >= 0) {
+    const existing = allUsers[userIdx];
+    const combinedUnlocked = Array.from(new Set([...(existing.unlockedPropertyIds || []), ...unlockedIds]));
+    updatedUser = {
+      ...existing,
+      pin: cleanPin,
+      unlockedPropertyIds: combinedUnlocked,
+      hasUsedPromo: true,
+      promoClaimedAt: new Date().toISOString(),
+      packages: [promoPackage, ...(existing.packages || [])],
+    };
+    allUsers[userIdx] = updatedUser;
+  } else {
+    updatedUser = {
+      id: `usr-${Date.now().toString(36)}`,
+      name: 'Promo User',
+      phone: cleanPhone,
+      pin: cleanPin,
+      createdAt: new Date().toISOString(),
+      unlockedPropertyIds: unlockedIds,
+      packages: [promoPackage],
+      hasUsedPromo: true,
+      promoClaimedAt: new Date().toISOString(),
+    };
+    allUsers.unshift(updatedUser);
+  }
+
+  saveUsers(allUsers);
+  saveActiveUserSession(updatedUser);
+
+  try {
+    localStorage.setItem(`promo_claimed_${cleanPhone}`, 'true');
+  } catch {
+    // ignore
+  }
+
+  // Create auto-approved promo unlock request for tracking in 100 countdown
+  const promoRequest: UnlockRequest = {
+    id: `req-promo-${Date.now().toString(36)}`,
+    type: 'package_purchase',
+    requestType: 'package_purchase',
+    packageTierId: 'tier_unlimited',
+    packageTierName: '100 Promo (5 Free Homes)',
+    buyerName: updatedUser.name || 'Promo User',
+    buyerPhone: cleanPhone,
+    paymentMethod: 'telebirr',
+    transactionRef: '100-PROMO-FREE',
+    screenshotUrl: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text y="25" fill="#10b981" font-weight="bold">100-PROMO-FREE</text></svg>',
+    status: 'approved', // NO APPROVAL FOR USER - INSTANT ACCESS!
+    amountBirr: 0,
+    remainingUnlocks: remainingUnlocks,
+    propertyId: autoUnlockPropertyId,
+    createdAt: new Date().toISOString(),
+    approvedAt: new Date().toISOString(),
+    adminNote: '100 Launch Promo: 5 Free Homes (0 ETB - Auto-approved instantly with Phone & Password)',
+    isPromoFree: true,
+  };
+
+  saveUnlockRequests([promoRequest, ...allRequests]);
+
+  const welcomeMsg = autoUnlockPropertyId
+    ? `🎉 ተሳክቷል! የቤቱ ባለቤት ስልክ ወዲያውኑ ተከፍቷል። በተጨማሪም 4 ተጨማሪ ቤቶችን በነጻ መክፈት ይችላሉ!`
+    : `🎉 የ100 ነፃ ዕድል ተከፍቷል! 5 ቤቶችን ያለ ምንም ክፍያ እና ያለምንም ፍቃድ መጠበቅ በነፃ መክፈት ይችላሉ!`;
+
+  return {
+    success: true,
+    message: welcomeMsg,
+    user: updatedUser,
+    promoRequest,
+  };
+}
+
 // -------------------------------------------------------------
 // PROPERTIES & LISTINGS
 // -------------------------------------------------------------
@@ -1120,7 +1259,8 @@ CREATE TABLE IF NOT EXISTS public.properties (
   expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
   last_renewed_at TIMESTAMPTZ,
   view_count INTEGER DEFAULT 0,
-  unlock_count INTEGER DEFAULT 0
+  unlock_count INTEGER DEFAULT 0,
+  is_promo_free BOOLEAN DEFAULT false
 );
 
 -- 2. Create Unlock Requests Table (5-House Package & Single Unlock screenshots)
@@ -1143,7 +1283,8 @@ CREATE TABLE IF NOT EXISTS public.unlock_requests (
   remaining_unlocks INTEGER DEFAULT 5,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   approved_at TIMESTAMPTZ,
-  admin_note TEXT
+  admin_note TEXT,
+  is_promo_free BOOLEAN DEFAULT false
 );
 
 -- 3. Create Users / Home Finders Table
@@ -1279,4 +1420,8 @@ CREATE POLICY "Public Read Reviews" ON public.reviews FOR SELECT USING (true);
 CREATE POLICY "Public Insert Reviews" ON public.reviews FOR INSERT WITH CHECK (true);
 CREATE POLICY "Public Update Reviews" ON public.reviews FOR UPDATE USING (true);
 CREATE POLICY "Public Delete Reviews" ON public.reviews FOR DELETE USING (true);
+
+-- Ensure 100-Promotion columns exist if updating an existing database
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS is_promo_free BOOLEAN DEFAULT false;
+ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS is_promo_free BOOLEAN DEFAULT false;
 `;

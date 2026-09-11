@@ -1155,6 +1155,8 @@ export default function App() {
           syncFromSupabase(true);
         }}
         onScrollToReviews={handleScrollToReviews}
+        properties={properties}
+        unlockRequests={unlockRequests}
       />
 
       {/* Main Content Area */}

@@ -71,6 +71,7 @@ export interface Property {
   lastRenewedAt?: string;
   viewCount: number;
   unlockCount: number;
+  isPromoFree?: boolean; // Posted under the 100-owners free promotion
 }
 
 export type PaymentMethod = 'telebirr' | 'cbe' | 'boa' | 'awash' | 'cbebirr';
@@ -88,6 +89,7 @@ export interface UserCreditPackage {
   remainingUnlocks: number; // e.g. 5, 4, 3, 2, 1, 0
   totalPurchased: number; // 5
   purchasedAt: string;
+  isPromo?: boolean; // 1-time 100 Launch Promo package
 }
 
 export interface UserAccount {
@@ -98,6 +100,8 @@ export interface UserAccount {
   createdAt: string;
   unlockedPropertyIds: string[]; // List of property IDs unlocked by this user
   packages: UserCreditPackage[];
+  hasUsedPromo?: boolean; // True once user claimed their 1-time 5-home promo
+  promoClaimedAt?: string;
 }
 
 export type UnlockRequestType = 'single_property' | 'credit_package' | 'package_purchase' | 'owner_listing_fee' | 'single_unlock';
@@ -125,6 +129,16 @@ export interface UnlockRequest {
   createdAt: string;
   approvedAt?: string;
   adminNote?: string;
+  isPromoFree?: boolean; // Claimed under the 100-renters/buyers free unlock promotion
+}
+
+export interface PromoConfig {
+  isEnabled: boolean;
+  maxOwners: number; // 100 owners
+  maxUsers: number; // 100 renters/buyers
+  durationMonths: number; // 3 months
+  startDate: string; // ISO string
+  endDate: string; // ISO string
 }
 
 export interface PaymentSettings {
@@ -143,6 +157,7 @@ export interface PaymentSettings {
   adminPin: string;
   autoDeleteDays: number;
   autoApproveListings?: boolean; // When true, owner listings appear on front page immediately
+  promoConfig?: PromoConfig;
 }
 
 export interface CompressionResult {

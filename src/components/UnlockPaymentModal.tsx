@@ -14,13 +14,26 @@ import {
   User, 
   Lock,
   KeyRound,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles,
+  Gift,
+  PhoneCall,
 } from 'lucide-react';
 import { Property, Language, PaymentMethod, UnlockRequest, PaymentSettings, UserAccount } from '../types';
 import { translations } from '../data/translations';
 import { compressImage } from '../utils/imageCompressor';
-import { isPhoneBanned, loginOrRegisterUser, getEligiblePackageForPrice, getPackageChoiceInfo } from '../utils/storage';
+import { 
+  isPhoneBanned, 
+  loginOrRegisterUser, 
+  getEligiblePackageForPrice, 
+  getPackageChoiceInfo,
+  getStoredUsers,
+  getStoredUnlockRequests,
+  getStoredProperties,
+  claimUserPromo5Homes,
+} from '../utils/storage';
 import { calculateHouseUnlockFee, formatEtbPrice, getTierForProperty } from '../utils/pricing';
+import { hasUserUsedPromo, calculatePromoStats } from '../utils/promo';
 
 interface UnlockPaymentModalProps {
   property: Property | null;
@@ -67,6 +80,67 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
   const [hasAgreedAntiDelala, setHasAgreedAntiDelala] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isSuccessSubmitted, setIsSuccessSubmitted] = useState(false);
+
+  // 1-Time 100 Launch Promo state (Instant unlock for first 100 users, 5 homes free)
+  const [promoUnlockedOwner, setPromoUnlockedOwner] = useState<{
+    ownerName: string;
+    ownerPhone: string;
+    remainingCredits: number;
+  } | null>(null);
+
+  // Promo eligibility checks
+  const allUsers = getStoredUsers();
+  const allRequests = getStoredUnlockRequests();
+  const allProps = getStoredProperties();
+  const promoStats = calculatePromoStats(allProps, allRequests);
+
+  const cleanPhone = (buyerPhone || currentUser?.phone || userPhone || '').trim().replace(/[\s-]/g, '');
+  const userHasUsedPromoOnce = cleanPhone ? hasUserUsedPromo(cleanPhone, allUsers, allRequests) : false;
+  const isEligibleForUserPromo = promoStats.isUserPromoAvailable && !userHasUsedPromoOnce;
+  const eligiblePackage = getEligiblePackageForPrice(currentUser, property.price, property.listingType);
+
+  const handleClaimPromoUnlock = () => {
+    setErrorMsg('');
+    const targetPhone = buyerPhone.trim().replace(/[\s-]/g, '');
+    if (!targetPhone || targetPhone.length < 9) {
+      setErrorMsg(
+        currentLang === 'am'
+          ? 'እባክዎ ትክክለኛ ስልክ ቁጥርዎን ያስገቡ (ለምሳሌ፦ 0911223344)።'
+          : 'Please enter your valid phone number (e.g. 0911223344).'
+      );
+      return;
+    }
+
+    if (isPhoneBanned(targetPhone)) {
+      setErrorMsg(t.bannedAccountAlert);
+      return;
+    }
+
+    const targetPin = buyerPin.trim() || '1234';
+
+    const result = claimUserPromo5Homes(
+      targetPhone,
+      targetPin,
+      property.id,
+      property.price,
+      property.listingType
+    );
+
+    if (!result.success) {
+      setErrorMsg(result.message);
+      return;
+    }
+
+    setPromoUnlockedOwner({
+      ownerName: property.ownerName || (currentLang === 'am' ? 'የቤቱ ባለቤት' : 'Property Owner'),
+      ownerPhone: property.ownerPhone || '0911000000',
+      remainingCredits: 4,
+    });
+
+    if (onUseCreditToUnlock) {
+      onUseCreditToUnlock(property);
+    }
+  };
 
   // Check if current phone is banned
   const isBanned = isPhoneBanned(buyerPhone);
@@ -205,7 +279,68 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
           </button>
         </div>
 
-        {isSuccessSubmitted ? (
+        {promoUnlockedOwner ? (
+          /* INSTANT PROMO UNLOCKED CELEBRATION (NO APPROVAL NEEDED) */
+          <div className="p-6 sm:p-8 text-center space-y-4 animate-in zoom-in-95">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-sm">
+              <Sparkles className="w-8 h-8 animate-pulse text-emerald-600 dark:text-emerald-400" />
+            </div>
+
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-xs font-black">
+              <Gift className="w-4 h-4" />
+              <span>{currentLang === 'am' ? 'የ100 ነፃ ማስተዋወቂያ ተከፍቷል (0 ብር)' : '100 Promo: 5 Homes Free (0 ETB)'}</span>
+            </div>
+
+            <h3 className="text-2xl font-black text-stone-900 dark:text-stone-100">
+              {currentLang === 'am' ? '🎉 የቤቱ ባለቤት ስልክ ወዲያውኑ ተከፍቷል!' : '🎉 Owner Direct Contact Unlocked!'}
+            </h3>
+            <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400 max-w-md mx-auto leading-relaxed">
+              {currentLang === 'am'
+                ? 'ምንም የአድሚን ፍቃድ ሳያስፈልግዎት ይህ ቤት ወዲያውኑ ተከፍቷል። በተጨማሪም 4 ተጨማሪ ቤቶችን በነፃ መክፈት ይችላሉ!'
+                : 'No admin approval required! This house is unlocked right now, plus you have 4 remaining free home unlocks!'}
+            </p>
+
+            {/* Owner Direct Contact Card with 1-click phone call */}
+            <div className="bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-400 dark:border-emerald-600 p-5 rounded-2xl max-w-md mx-auto text-left space-y-3 shadow-md">
+              <div className="flex items-center justify-between border-b border-emerald-200 dark:border-emerald-800 pb-2.5">
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">
+                    {currentLang === 'am' ? 'የባለቤቱ ስም' : 'Owner Name'}
+                  </span>
+                  <p className="text-base font-black text-stone-900 dark:text-white">
+                    {promoUnlockedOwner.ownerName}
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-600 text-white text-xs font-black font-mono">
+                  {promoUnlockedOwner.remainingCredits} {currentLang === 'am' ? 'ቀሪ ነፃ ቤቶች' : 'free unlocks left'}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-[10px] uppercase font-bold text-stone-400 block tracking-wider">
+                  {currentLang === 'am' ? 'የባለቤቱ ስልክ ቁጥር' : 'Direct Phone Number'}
+                </span>
+                <a
+                  href={`tel:${promoUnlockedOwner.ownerPhone}`}
+                  className="mt-1 flex items-center justify-between p-3 rounded-xl bg-white dark:bg-stone-900 border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 font-mono font-black text-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition-colors shadow-xs"
+                >
+                  <span>{promoUnlockedOwner.ownerPhone}</span>
+                  <span className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-sans font-bold flex items-center gap-1.5">
+                    <PhoneCall className="w-3.5 h-3.5" />
+                    {currentLang === 'am' ? 'ይደውሉ' : 'Call'}
+                  </span>
+                </a>
+              </div>
+            </div>
+
+            <button
+              onClick={onClose}
+              className="py-3 px-8 bg-stone-900 hover:bg-stone-800 dark:bg-stone-100 dark:hover:bg-white text-white dark:text-stone-900 rounded-xl font-black text-sm shadow-md cursor-pointer transition-all"
+            >
+              {t.close}
+            </button>
+          </div>
+        ) : isSuccessSubmitted ? (
           /* SUCCESS STATE */
           <div className="p-8 text-center space-y-4">
             <div className="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-sm">
@@ -240,6 +375,106 @@ export const UnlockPaymentModal: React.FC<UnlockPaymentModalProps> = ({
               <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-rose-800 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                 <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {/* 100 Promo: 5 Homes Free (0 ETB) Card - Instant Unlock, No Admin Approval Required! */}
+            {isEligibleForUserPromo && !eligiblePackage && (
+              <div className="p-4 sm:p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-amber-50 dark:from-emerald-950/60 dark:via-teal-950/50 dark:to-amber-950/40 border-2 border-emerald-500 rounded-2xl space-y-3.5 shadow-md animate-in zoom-in-95">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                      <Gift className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider">
+                          {currentLang === 'am' ? 'የ100 ደንበኞች ነፃ ዕድል' : '100 Launch Promo'}
+                        </span>
+                        <span className="text-xs text-stone-500 dark:text-stone-400 font-bold font-mono">
+                          ({promoStats.remainingUsers} {currentLang === 'am' ? 'ቦታዎች ቀሩ' : 'spots left'})
+                        </span>
+                      </div>
+                      <h4 className="font-black text-stone-900 dark:text-white text-sm sm:text-base mt-0.5">
+                        {currentLang === 'am' ? '5 ቤቶችን በነፃ ይክፈቱ (0 ብር)' : 'Unlock 5 Homes Free (0 ETB)'}
+                      </h4>
+                    </div>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-black shadow-xs font-mono shrink-0">
+                    0 ETB
+                  </span>
+                </div>
+
+                <div className="p-3 bg-white/90 dark:bg-stone-900/90 rounded-xl border border-emerald-300 dark:border-emerald-800 text-xs space-y-1 text-stone-700 dark:text-stone-300">
+                  <p className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
+                    {currentLang === 'am'
+                      ? 'ምንም የአድሚን ፍቃድ ወይም የገንዘብ ስክሪንሽት አያስፈልግም! ወዲያውኑ ይከፈታል።'
+                      : 'No admin approval or payment screenshot required! Instant access.'}
+                  </p>
+                  <p className="text-[11px] text-stone-500 dark:text-stone-400 leading-relaxed">
+                    {currentLang === 'am'
+                      ? 'ስልክዎን እና የይለፍ ቃልዎን (Password) ብቻ በማስገባት ይህንን ቤት ጨምሮ 5 ቤቶችን በነፃ ይክፈቱ (1 ጊዜ ብቻ የሚሰራ)።'
+                      : 'Enter only your Phone & Password to instantly unlock this home + 4 more free unlocks (1-time use only).'}
+                  </p>
+                </div>
+
+                {/* Only Phone and Password for promo */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
+                      {t.buyerPhoneLabel} *
+                    </label>
+                    <input
+                      type="tel"
+                      value={buyerPhone}
+                      onChange={(e) => setBuyerPhone(e.target.value)}
+                      placeholder="0911223344"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-900 border border-emerald-400 dark:border-emerald-700 rounded-xl text-sm font-mono font-bold text-stone-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1">
+                      {currentLang === 'am' ? 'የይለፍ ቃል / Password (PIN) *' : 'Password / PIN *'}
+                    </label>
+                    <input
+                      type="password"
+                      value={buyerPin}
+                      onChange={(e) => setBuyerPin(e.target.value)}
+                      placeholder="4+ digits PIN"
+                      className="w-full px-3.5 py-2.5 bg-white dark:bg-stone-900 border border-emerald-400 dark:border-emerald-700 rounded-xl text-sm font-mono text-stone-900 dark:text-white focus:ring-2 focus:ring-emerald-500"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleClaimPromoUnlock}
+                  className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white rounded-xl text-sm font-black flex items-center justify-center gap-2 shadow-md cursor-pointer transition-all active:scale-98"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  <span>
+                    {currentLang === 'am'
+                      ? '✨ 5 ቤቶችን በነፃ ክፈት (0 ብር - ወዲያውኑ ይከፈታል)'
+                      : '✨ Claim 5 Homes Free (0 ETB - Instant Access)'}
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* Post-Promo 1-Time Used Alert */}
+            {userHasUsedPromoOnce && !eligiblePackage && (
+              <div className="p-3.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-2xl space-y-1.5 text-xs animate-in fade-in">
+                <div className="flex items-center gap-2 font-black text-amber-900 dark:text-amber-200">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>{currentLang === 'am' ? 'የ 1 ጊዜ ነፃ ማስተዋወቂያዎ ጥቅም ላይ ውሏል' : '1-Time Free Promo Already Used'}</span>
+                </div>
+                <p className="text-amber-800 dark:text-amber-300 text-[11px] sm:text-xs leading-relaxed">
+                  {currentLang === 'am'
+                    ? `የ 1 ጊዜ የ 5 ቤቶች ነፃ ዕድልዎ ጥቅም ላይ ውሏል። ለዚህ እና ለቀጣይ ቤቶች መክፈቻ እባክዎ ከታች የ ${unlockFee} ብር ክፍያ በመፈፀም ስክሪንሽት ያያይዙ።`
+                    : `Your 1-time 5-home free promo has been used on this phone. For this and future unlocks, please complete the ${unlockFee} ETB fee and upload your receipt screenshot below.`}
+                </p>
               </div>
             )}
 

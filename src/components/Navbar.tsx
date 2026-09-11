@@ -15,10 +15,15 @@ import {
   Phone,
   ShieldCheck,
   Check,
-  Star
+  Star,
+  Gift,
+  MoreVertical,
+  Sparkles
 } from 'lucide-react';
-import { Language, Theme, UserAccount } from '../types';
+import { Language, Theme, UserAccount, Property, UnlockRequest } from '../types';
 import { translations } from '../data/translations';
+import { PromoCountdownWidget } from './PromoCountdownWidget';
+import { calculatePromoStats } from '../utils/promo';
 
 interface NavbarProps {
   currentLang: Language;
@@ -36,6 +41,8 @@ interface NavbarProps {
   isSyncing?: boolean;
   onManualRefresh?: () => void;
   onScrollToReviews?: () => void;
+  properties?: Property[];
+  unlockRequests?: UnlockRequest[];
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -54,9 +61,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   isSyncing = false,
   onManualRefresh,
   onScrollToReviews,
+  properties = [],
+  unlockRequests = [],
 }) => {
   const t = translations[currentLang];
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isPromoDropdownOpen, setIsPromoDropdownOpen] = useState(false);
+
+  // Live promo calculation
+  const promoStats = calculatePromoStats(properties, unlockRequests);
 
   const handleNavClick = (tab: 'browse' | 'post' | 'owner' | 'my-requests' | 'admin') => {
     setActiveTab(tab);
@@ -269,10 +282,52 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                 </button>
               )}
+
+              {/* 3-DOT PROMO COUNTDOWN MENU BUTTON (Desktop) */}
+              <div className="relative">
+                <button
+                  id="btn-nav-promo-three-dots"
+                  onClick={() => setIsPromoDropdownOpen(!isPromoDropdownOpen)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-400/80 bg-amber-50 dark:bg-amber-950/70 hover:bg-amber-100 dark:hover:bg-amber-900/80 text-stone-900 dark:text-amber-200 text-xs font-black shadow-xs transition-all cursor-pointer"
+                  title={currentLang === 'am' ? 'የ100 ባለቤቶች እና 100 ተጠቃሚዎች ነፃ ዕድል ቆጣሪ (3-Dot Promo Menu)' : '100 Promo Live Countdown (3-Dot Menu)'}
+                >
+                  <Gift className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 animate-bounce" />
+                  <span className="font-extrabold">{currentLang === 'am' ? '100 ነፃ ዕድል' : '100 Promo'}</span>
+                  <span className="font-mono text-[10px] bg-amber-400 text-stone-950 px-1.5 py-0.5 rounded-md font-bold">
+                    {promoStats.formattedCountdown}
+                  </span>
+                  <MoreVertical className="w-3.5 h-3.5 text-stone-500" />
+                </button>
+
+                {isPromoDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setIsPromoDropdownOpen(false)} 
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-84 max-w-[95vw] z-50 animate-in fade-in zoom-in-95">
+                      <PromoCountdownWidget
+                        currentLang={currentLang}
+                        properties={properties}
+                        unlockRequests={unlockRequests}
+                        onPostClick={() => {
+                          setIsPromoDropdownOpen(false);
+                          handleNavClick('post');
+                        }}
+                        onBrowseClick={() => {
+                          setIsPromoDropdownOpen(false);
+                          handleNavClick('browse');
+                        }}
+                        compact={true}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* Mobile & Tablet Right Controls: Post CTA + The 3-Line Hamburger Menu */}
-            <div className="flex lg:hidden items-center gap-2">
+            {/* Mobile & Tablet Right Controls: Post CTA + 3-Dot Promo + Hamburger Menu */}
+            <div className="flex lg:hidden items-center gap-1.5">
               {/* Quick Post button */}
               <button
                 id="btn-mobile-post"
@@ -282,6 +337,46 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <PlusCircle className="w-3.5 h-3.5" />
                 <span>{currentLang === 'am' ? 'ለጥፍ' : 'Post'}</span>
               </button>
+
+              {/* 3-Dot Promo Button (Mobile) */}
+              <div className="relative">
+                <button
+                  id="btn-mobile-promo-3dots"
+                  onClick={() => setIsPromoDropdownOpen(!isPromoDropdownOpen)}
+                  className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/70 text-amber-900 dark:text-amber-300 border border-amber-300 dark:border-amber-700 flex items-center justify-center transition-colors cursor-pointer active:scale-95 relative"
+                  aria-label="100 Promo Countdown"
+                  title={currentLang === 'am' ? 'የ100 ነፃ ዕድል ቆጣሪ' : '100 Promo Countdown'}
+                >
+                  <Gift className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full animate-ping" />
+                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full" />
+                </button>
+
+                {isPromoDropdownOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setIsPromoDropdownOpen(false)} 
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-80 max-w-[90vw] z-50 animate-in fade-in zoom-in-95">
+                      <PromoCountdownWidget
+                        currentLang={currentLang}
+                        properties={properties}
+                        unlockRequests={unlockRequests}
+                        onPostClick={() => {
+                          setIsPromoDropdownOpen(false);
+                          handleNavClick('post');
+                        }}
+                        onBrowseClick={() => {
+                          setIsPromoDropdownOpen(false);
+                          handleNavClick('browse');
+                        }}
+                        compact={true}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
 
               {/* 3-LINE HAMBURGER MENU BUTTON (Houses Language, Night Mode, Settings) */}
               <button
@@ -331,6 +426,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Drawer Content Sections */}
               <div className="p-4 space-y-4">
+                {/* 0. 100 PROMO COUNTDOWN IN MOBILE DRAWER */}
+                <PromoCountdownWidget
+                  currentLang={currentLang}
+                  properties={properties}
+                  unlockRequests={unlockRequests}
+                  onPostClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleNavClick('post');
+                  }}
+                  onBrowseClick={() => {
+                    setIsMobileMenuOpen(false);
+                    handleNavClick('browse');
+                  }}
+                  compact={true}
+                />
+
                 {/* 1. LANGUAGE CHANGER (Amharic / English) */}
                 <div className="bg-stone-50 dark:bg-stone-800/60 p-3 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-2">
                   <label className="text-[11px] font-extrabold text-stone-500 dark:text-stone-400 uppercase tracking-wider flex items-center gap-1.5">

@@ -32,12 +32,15 @@ import {
   MoreVertical,
   ChevronDown,
   ChevronUp,
-  Star
+  Star,
+  Gift
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Property, UnlockRequest, PaymentSettings, Language, ReportedBroker, UserAccount, Review } from '../types';
 import { translations } from '../data/translations';
 import { ErrorBoundary } from './ErrorBoundary';
+import { PromoCountdownWidget } from './PromoCountdownWidget';
+import { calculatePromoStats } from '../utils/promo';
 import { 
   SUPABASE_SQL_SCHEMA, 
   cleanupExpiredListings, 
@@ -210,6 +213,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setLoadingScreenshotId(null);
     }
   };
+
+  // Launch Promo (100 Owners & 100 Renters/Buyers) live calculation
+  const promoStats = calculatePromoStats(properties, unlockRequests, paymentSettings.promoConfig);
 
   // Settings form state
   const [settingsForm, setSettingsForm] = useState<PaymentSettings>({ ...paymentSettings });
@@ -806,22 +812,29 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                 </button>
               </div>
 
-              {/* Right: The Requested 3-DOT MENU BUTTON to Choose What You Want */}
+              {/* Right: The Requested 3-DOT MENU BUTTON with LIVE PROMO COUNTDOWN */}
               <div className="relative shrink-0">
                 <button
                   id="btn-admin-nav-three-dots"
                   type="button"
                   onClick={() => setIsNavMenuOpen(!isNavMenuOpen)}
-                  className={`px-3 py-1.5 rounded-xl border text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
                     isNavMenuOpen
                       ? 'bg-emerald-600 text-white border-emerald-500'
                       : 'bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
                   }`}
-                  title={currentLang === 'am' ? 'ክፍል ይምረጡ (3-Dot Menu)' : 'Choose section (3-Dot Menu)'}
-                  aria-label="Choose admin section"
+                  title={currentLang === 'am' ? 'ክፍል ይምረጡ እና የነፃ ዕድል ቆጣሪ (3-Dot Menu & Promo Countdown)' : 'Choose section & 100 Promo Countdown (3-Dot Menu)'}
+                  aria-label="Choose admin section & 100 promo countdown"
                 >
-                  <MoreVertical className="w-4 h-4 text-emerald-500" />
-                  <span className="font-extrabold">{currentLang === 'am' ? 'ክፍል ምረጥ' : 'Sections'}</span>
+                  <MoreVertical className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span className="font-extrabold hidden xs:inline">{currentLang === 'am' ? 'ክፍል ምረጥ' : 'Sections'}</span>
+                  
+                  {/* Live Promo Countdown Pill on the 3-Dot Button */}
+                  <span className="bg-amber-400 text-stone-950 font-black text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                    <Gift className="w-3 h-3 text-stone-950 shrink-0" />
+                    <span className="font-mono">{promoStats.formattedCountdown}</span>
+                  </span>
+
                   {pendingReports.length > 0 && (
                     <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
                   )}
@@ -834,7 +847,18 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                       className="fixed inset-0 z-40"
                       onClick={() => setIsNavMenuOpen(false)}
                     />
-                    <div className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-2 z-50 animate-in fade-in zoom-in-95">
+                    <div className="absolute right-0 top-full mt-2 w-80 sm:w-88 max-w-[95vw] bg-white dark:bg-stone-900 rounded-2xl shadow-2xl border border-stone-200 dark:border-stone-800 p-2.5 z-50 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+                      {/* Live Promo Countdown Widget inside 3-Dot Popover */}
+                      <div className="mb-2.5">
+                        <PromoCountdownWidget
+                          currentLang={currentLang}
+                          properties={properties}
+                          unlockRequests={unlockRequests}
+                          promoConfig={paymentSettings.promoConfig}
+                          compact={true}
+                        />
+                      </div>
+
                       <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-stone-400 dark:text-stone-500 border-b border-stone-100 dark:border-stone-800 mb-1 flex items-center justify-between">
                         <span>{currentLang === 'am' ? 'የአድሚን ክፍል ይምረጡ' : 'Choose Admin Section'}</span>
                         <span className="text-emerald-600 dark:text-emerald-400 font-bold">7 {currentLang === 'am' ? 'ክፍሎች' : 'Sections'}</span>
@@ -1106,6 +1130,12 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                                   <span className="font-mono font-bold text-emerald-900 dark:text-emerald-300 text-xs bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md">
                                     📞 {req.buyerPhone}
                                   </span>
+                                  {req.isPromoFree && (
+                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-400 text-stone-950 border border-amber-500 flex items-center gap-1 shadow-2xs animate-pulse">
+                                      <Gift className="w-3 h-3 text-stone-950" />
+                                      <span>100 PROMO (0 ETB)</span>
+                                    </span>
+                                  )}
                                   {req.type === 'package_purchase' ? (
                                     <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-300 dark:border-purple-800">
                                       🎁 5-House Package ({req.packageTierId || 'Standard'})
@@ -1636,6 +1666,12 @@ TRUNCATE TABLE unlock_requests, properties, users, user_unlocked_properties, use
                                       ? currentLang === 'am' ? '⏳ ማረጋገጫ የሚጠብቅ' : '⏳ Pending Approval'
                                       : prop.status}
                                   </span>
+                                  {prop.isPromoFree && (
+                                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-400 text-stone-950 border border-amber-500 flex items-center gap-1 shadow-2xs">
+                                      <Gift className="w-3 h-3 text-stone-950" />
+                                      <span>100 PROMO (0 ETB)</span>
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-xs text-stone-500 dark:text-stone-400 flex flex-wrap items-center gap-2 mt-1">
                                   <span className="text-emerald-600 dark:text-emerald-400 font-bold">{prop.area}</span>

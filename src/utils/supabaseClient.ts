@@ -141,6 +141,7 @@ function mapPropertyRow(row: any): Property {
     lastRenewedAt: row.last_renewed_at,
     viewCount: row.view_count || 0,
     unlockCount: row.unlock_count || 0,
+    isPromoFree: Boolean(row.is_promo_free),
   };
 }
 
@@ -254,6 +255,7 @@ export async function savePropertyToSupabase(prop: Property): Promise<boolean> {
       last_renewed_at: prop.lastRenewedAt || null,
       view_count: prop.viewCount || 0,
       unlock_count: prop.unlockCount || 0,
+      is_promo_free: Boolean(prop.isPromoFree),
     };
 
     // Remove any undefined keys
@@ -348,7 +350,7 @@ export async function wipeAllTestDataFromSupabase(): Promise<{ success: boolean;
 // ----------------------------------------------------------------------
 
 // Lightweight field list to prevent downloading hundreds of KB of base64 screenshots in list view
-const UNLOCK_REQUEST_LIST_FIELDS = 'id, request_type, property_id, property_title, property_area, package_tier_id, package_tier_name, buyer_name, buyer_phone, payment_method, transaction_ref, screenshot_size_kb, status, amount_birr, remaining_unlocks, created_at, approved_at, admin_note';
+const UNLOCK_REQUEST_LIST_FIELDS = 'id, request_type, property_id, property_title, property_area, package_tier_id, package_tier_name, buyer_name, buyer_phone, payment_method, transaction_ref, screenshot_size_kb, status, amount_birr, remaining_unlocks, created_at, approved_at, admin_note, is_promo_free';
 
 export async function fetchUnlockRequestsFromSupabase(): Promise<UnlockRequest[] | null> {
   const supabase = getSupabase();
@@ -384,6 +386,7 @@ export async function fetchUnlockRequestsFromSupabase(): Promise<UnlockRequest[]
       createdAt: row.created_at || new Date().toISOString(),
       approvedAt: row.approved_at,
       adminNote: row.admin_note,
+      isPromoFree: Boolean(row.is_promo_free),
     }));
   } catch (err) {
     console.warn('fetchUnlockRequestsFromSupabase error:', err);
@@ -453,6 +456,7 @@ export async function fetchUnlockRequestsForPhoneFromSupabase(phone: string): Pr
       createdAt: row.created_at || new Date().toISOString(),
       approvedAt: row.approved_at,
       adminNote: row.admin_note,
+      isPromoFree: Boolean(row.is_promo_free),
     }));
   } catch (err) {
     console.warn('fetchUnlockRequestsForPhoneFromSupabase error:', err);
@@ -516,6 +520,7 @@ export async function saveUnlockRequestToSupabase(req: UnlockRequest): Promise<b
       created_at: req.createdAt || new Date().toISOString(),
       approved_at: req.approvedAt || null,
       admin_note: req.adminNote || null,
+      is_promo_free: Boolean(req.isPromoFree),
     };
 
     // If screenshotUrl is present, set it; otherwise don't overwrite existing in db unless provided

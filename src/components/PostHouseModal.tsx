@@ -18,6 +18,8 @@ import {
   FileCheck,
   Camera,
   Trash2,
+  Gift,
+  IdCard,
 } from 'lucide-react';
 import {
   Property,
@@ -36,8 +38,9 @@ import {
 } from '../data/addisAreas';
 import { translations } from '../data/translations';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
-import { getStoredSettings, getStoredOwnerProfile, saveOwnerProfile, OwnerProfile } from '../utils/storage';
+import { getStoredSettings, getStoredOwnerProfile, saveOwnerProfile, OwnerProfile, getStoredProperties } from '../utils/storage';
 import { calculateOwnerListingFee, formatEtbPrice } from '../utils/pricing';
+import { hasOwnerUsedPromo, calculatePromoStats } from '../utils/promo';
 
 interface PostHouseModalProps {
   isOpen: boolean;
@@ -312,8 +315,16 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
     // Tiered Listing Fee calculation
     const calculatedListingFee = calculateOwnerListingFee(Number(price) || 0, listingType, category);
 
-    // Validate listing fee payment screenshot (strictly required for regular owners)
-    if (!isAdminPost && !sellerReceiptImage) {
+    // Check 1-time promo eligibility for owner (first 100 owners, 1-time only)
+    const allExistingProps = getStoredProperties();
+    const promoStats = calculatePromoStats(allExistingProps, []);
+    const cleanOwnerPhone = ownerPhone.trim().replace(/[\s-]/g, '');
+    const ownerHasUsedPromo = hasOwnerUsedPromo(cleanOwnerPhone, allExistingProps);
+    const isOwnerPromoFree = !isAdminPost && promoStats.isOwnerPromoAvailable && !ownerHasUsedPromo;
+    const finalListingFee = isOwnerPromoFree ? 0 : calculatedListingFee;
+
+    // Validate listing fee payment screenshot (strictly required for regular owners EXCEPT 1-time promo)
+    if (!isAdminPost && !isOwnerPromoFree && !sellerReceiptImage) {
       setErrorMsg(
         currentLang === 'am'
           ? `እባክዎ የ ${calculatedListingFee} ብር የማስመዝገቢያ ክፍያ ስክሪንሽት (Receipt Screenshot) ያያይዙ።`
@@ -370,11 +381,12 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       listingType: listingType,
       price: Number(price),
       pricePeriod: listingType === 'rent' ? pricePeriod : 'total',
-      sellerListingFeeBirr: isAdminPost ? 0 : calculatedListingFee,
-      sellerPaymentScreenshotUrl: isAdminPost ? undefined : (sellerReceiptImage || undefined),
-      sellerPaymentMethod: isAdminPost ? undefined : sellerPaymentMethod,
-      sellerTransactionRef: isAdminPost ? 'ADMIN_DIRECT_POST' : (sellerReceiptRef.trim() || undefined),
-      status: isAdminPost ? 'active' : 'pending', // Admin posts directly as active!
+      sellerListingFeeBirr: isAdminPost ? 0 : finalListingFee,
+      isPromoFree: isOwnerPromoFree,
+      sellerPaymentScreenshotUrl: (isAdminPost || isOwnerPromoFree) ? undefined : (sellerReceiptImage || undefined),
+      sellerPaymentMethod: (isAdminPost || isOwnerPromoFree) ? undefined : sellerPaymentMethod,
+      sellerTransactionRef: isAdminPost ? 'ADMIN_DIRECT_POST' : (isOwnerPromoFree ? '100-PROMO-FREE' : (sellerReceiptRef.trim() || undefined)),
+      status: isAdminPost ? 'active' : 'pending', // Admin posts directly as active! Owner listings require admin review!
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
       viewCount: 0,
@@ -1024,8 +1036,73 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
             </div>
           ) : (() => {
             const calculatedFee = calculateOwnerListingFee(Number(price) || 0, listingType, category);
+            const allProps = getStoredProperties();
+            const promoStats = calculatePromoStats(allProps, []);
+            const cleanPhone = ownerPhone.trim().replace(/[\s-]/g, '');
+            const hasUsed = hasOwnerUsedPromo(cleanPhone, allProps);
+            const isPromoEligible = promoStats.isOwnerPromoAvailable && !hasUsed && cleanPhone.length >= 9;
+
+            if (isPromoEligible) {
+              return (
+                <div className="p-4 sm:p-5 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/40 border-2 border-emerald-500 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                        <Gift className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider">
+                            {currentLang === 'am' ? 'የ100 ባለቤቶች ነፃ ዕድል' : '100 Owners Promo'}
+                          </span>
+                          <span className="text-xs text-stone-500 font-semibold">
+                            ({promoStats.remainingOwners} {currentLang === 'am' ? 'ቀሪ ቦታዎች' : 'left'})
+                          </span>
+                        </div>
+                        <h4 className="font-extrabold text-stone-900 dark:text-stone-100 text-sm mt-0.5">
+                          {currentLang === 'am' ? 'የ 0 ብር የማስመዝገቢያ ስጦታ (1 ጊዜ ብቻ የሚሰራ)' : '0 ETB Listing Fee (1-Time Use Only)'}
+                        </h4>
+                      </div>
+                    </div>
+                    <span className="px-3.5 py-1.5 rounded-full bg-emerald-600 text-white text-xs font-black shadow-xs font-mono">
+                      0 ETB
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 bg-white dark:bg-stone-900 rounded-xl border border-emerald-300 dark:border-emerald-800 text-xs space-y-2">
+                    <p className="text-emerald-800 dark:text-emerald-300 font-semibold leading-relaxed">
+                      {currentLang === 'am'
+                        ? '🎉 እንኳን ደስ አለዎት! ከመጀመሪያዎቹ 100 ባለቤቶች አንዱ ስለሆኑ የመጀመሪያውን ቤት ያለ ምንም ክፍያ (0 ብር) መመዝገብ ይችላሉ! የገንዘብ ክፍያ ስክሪንሽት አያስፈልግዎትም።'
+                        : '🎉 Congratulations! As one of the first 100 verified property owners, your first listing is completely FREE (0 ETB). No payment receipt screenshot required!'}
+                    </p>
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200">
+                      <IdCard className="w-4 h-4 shrink-0 text-amber-600" />
+                      <span className="text-[11px] font-bold">
+                        {currentLang === 'am'
+                          ? 'የባለቤትነት ማረጋገጫ የመታወቂያ ፊት ፎቶ (National ID) ግዴታ ነው። ቤቱ በአስተዳዳሪው ከተጣራ በኋላ ይለጠፋል።'
+                          : 'National ID front photo is strictly required below to verify ownership. Listing goes live after admin approval.'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div className="p-4 sm:p-5 bg-emerald-500/10 dark:bg-emerald-950/40 border-2 border-emerald-500/40 rounded-2xl space-y-3">
+                {hasUsed && cleanPhone.length >= 9 && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 rounded-xl text-xs space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>{currentLang === 'am' ? 'የ1 ጊዜ ነፃ ዕድልዎ ጥቅም ላይ ውሏል' : '1-Time Free Promo Listing Already Used'}</span>
+                    </div>
+                    <p className="text-amber-800 dark:text-amber-300">
+                      {currentLang === 'am'
+                        ? `ይህ ስልክ ቁጥር ቀደም ሲል የ1 ጊዜ ነፃ ማስተዋወቂያውን ተጠቅሟል። ለዚህ ቀጣይ ምዝገባ የ ${calculatedFee} ብር ክፍያ እና ስክሪንሽት ያስፈልጋል።`
+                        : `This phone has already used its 1-time free promo listing. For this next listing, standard fee of ${calculatedFee} ETB & payment screenshot are required.`}
+                    </p>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
