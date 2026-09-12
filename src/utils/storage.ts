@@ -1266,6 +1266,7 @@ CREATE TABLE IF NOT EXISTS public.properties (
 -- 2. Create Unlock Requests Table (5-House Package & Single Unlock screenshots)
 CREATE TABLE IF NOT EXISTS public.unlock_requests (
   id TEXT PRIMARY KEY,
+  type TEXT DEFAULT 'single_unlock',
   request_type TEXT DEFAULT 'single_unlock',
   property_id TEXT,
   property_title TEXT,
@@ -1276,7 +1277,7 @@ CREATE TABLE IF NOT EXISTS public.unlock_requests (
   buyer_phone TEXT NOT NULL,
   payment_method TEXT NOT NULL,
   transaction_ref TEXT,
-  screenshot_url TEXT NOT NULL,
+  screenshot_url TEXT,
   screenshot_size_kb NUMERIC,
   status TEXT NOT NULL DEFAULT 'pending',
   amount_birr NUMERIC NOT NULL DEFAULT 150,
@@ -1421,7 +1422,17 @@ CREATE POLICY "Public Insert Reviews" ON public.reviews FOR INSERT WITH CHECK (t
 CREATE POLICY "Public Update Reviews" ON public.reviews FOR UPDATE USING (true);
 CREATE POLICY "Public Delete Reviews" ON public.reviews FOR DELETE USING (true);
 
--- Ensure 100-Promotion columns exist if updating an existing database
+-- Ensure all columns and non-null constraints are updated for existing tables
 ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS is_promo_free BOOLEAN DEFAULT false;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS national_id_front_url TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS national_id_size_kb NUMERIC;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS seller_listing_fee_birr NUMERIC DEFAULT 0;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS last_renewed_at TIMESTAMPTZ;
+
+ALTER TABLE public.unlock_requests ALTER COLUMN screenshot_url DROP NOT NULL;
+ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'single_unlock';
+ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS request_type TEXT DEFAULT 'single_unlock';
+ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
+ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS admin_note TEXT;
 ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS is_promo_free BOOLEAN DEFAULT false;
 `;

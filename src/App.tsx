@@ -546,8 +546,14 @@ export default function App() {
       console.warn('Could not save property to Supabase:', err);
     });
 
-    // If owner submitted with listing fee screenshot or ref, create an unlock request for admin verification
-    if (finalProp.sellerPaymentScreenshotUrl || (finalProp as any).sellerTransactionRef || finalProp.sellerListingFeeBirr) {
+    // If owner submitted with listing fee, OR if it's an owner promo listing requiring ID approval:
+    if (
+      finalProp.sellerPaymentScreenshotUrl ||
+      (finalProp as any).sellerTransactionRef ||
+      finalProp.sellerListingFeeBirr ||
+      finalProp.isPromoFree ||
+      finalProp.nationalIdFrontUrl
+    ) {
       const ownerListingReq: UnlockRequest = {
         id: `req-owner-${finalProp.id}`,
         type: 'owner_listing_fee',
@@ -557,13 +563,14 @@ export default function App() {
         propertyArea: finalProp.area,
         buyerName: finalProp.ownerName,
         buyerPhone: finalProp.ownerPhone,
-        paymentMethod: (finalProp as any).sellerPaymentMethod || 'telebirr',
-        transactionRef: (finalProp as any).sellerTransactionRef || `OWNER-${finalProp.id.slice(-5)}`,
-        screenshotUrl: finalProp.sellerPaymentScreenshotUrl,
-        screenshotSizeKb: 80,
+        paymentMethod: (finalProp as any).sellerPaymentMethod || (finalProp.isPromoFree ? 'launch_promo' : 'telebirr'),
+        transactionRef: (finalProp as any).sellerTransactionRef || (finalProp.isPromoFree ? `PROMO-OWNER-${finalProp.id.slice(-5)}` : `OWNER-${finalProp.id.slice(-5)}`),
+        screenshotUrl: finalProp.nationalIdFrontUrl || finalProp.sellerPaymentScreenshotUrl || undefined,
+        screenshotSizeKb: finalProp.nationalIdSizeKb || 80,
         status: shouldAutoApprove ? 'approved' : 'pending',
-        amountBirr: finalProp.sellerListingFeeBirr || 150,
+        amountBirr: finalProp.sellerListingFeeBirr || 0,
         remainingUnlocks: 0,
+        isPromoFree: Boolean(finalProp.isPromoFree),
         createdAt: new Date().toISOString(),
       };
       const updatedReqs = [ownerListingReq, ...unlockRequests.filter((r) => r.id !== ownerListingReq.id)];

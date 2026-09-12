@@ -78,7 +78,19 @@ export type PaymentMethod = 'telebirr' | 'cbe' | 'boa' | 'awash' | 'cbebirr';
 
 export type UnlockStatus = 'pending' | 'approved' | 'rejected';
 
-export type PackageTierId = 'tier_10k' | 'tier_25k' | 'tier_35k' | 'tier_50k' | 'tier_75k' | 'tier_unlimited' | 'tier_sale';
+export type PackageTierId =
+  | 'tier_10k'
+  | 'tier_15k'
+  | 'tier_25k'
+  | 'tier_35k'
+  | 'tier_45k'
+  | 'tier_50k'
+  | 'tier_75k'
+  | 'tier_100k'
+  | 'tier_200k'
+  | 'tier_above200k'
+  | 'tier_unlimited'
+  | 'tier_sale';
 
 export interface UserCreditPackage {
   id?: string;

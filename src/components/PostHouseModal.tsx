@@ -1119,18 +1119,27 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
                   <p className="font-bold text-stone-900 dark:text-white">
                     {currentLang === 'am' ? 'የክፍያ ተመን ሰንጠረዥ (Tier Schedule):' : 'Tiered Pricing Breakdown:'}
                   </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[11px] text-stone-600 dark:text-stone-300 pt-1">
-                    <span className={`p-1 rounded ${calculatedFee === 150 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      ≤ 15k ➔ <b>150 ብር</b>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 text-[11px] text-stone-600 dark:text-stone-300 pt-1">
+                    <span className={`p-1 rounded ${calculatedFee === 200 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                      ≤ 15k ➔ <b>200 ብር</b>
                     </span>
-                    <span className={`p-1 rounded ${calculatedFee === 250 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      15k - 35k ➔ <b>250 ብር</b>
+                    <span className={`p-1 rounded ${calculatedFee === 300 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                      15k - 45k ➔ <b>300 ብር</b>
                     </span>
-                    <span className={`p-1 rounded ${calculatedFee === 350 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      35k - 75k ➔ <b>350 ብር</b>
+                    <span className={`p-1 rounded ${calculatedFee === 400 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                      45k - 75k ➔ <b>400 ብር</b>
                     </span>
                     <span className={`p-1 rounded ${calculatedFee === 500 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      &gt; 75k / Sale ➔ <b>500 ብር</b>
+                      75k - 100k ➔ <b>500 ብር</b>
+                    </span>
+                    <span className={`p-1 rounded ${calculatedFee === 600 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                      100k - 200k ➔ <b>600 ብር</b>
+                    </span>
+                    <span className={`p-1 rounded ${calculatedFee === 700 && listingType !== 'sale' ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                      &gt; 200k ➔ <b>700 ብር</b>
+                    </span>
+                    <span className={`p-1 rounded col-span-2 sm:col-span-1 ${listingType === 'sale' ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                      ሽያጭ (Sale) ➔ <b>700 ብር</b>
                     </span>
                   </div>
                 </div>

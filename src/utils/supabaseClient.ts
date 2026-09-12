@@ -168,7 +168,17 @@ export async function fetchPropertiesSummaryFromSupabase(): Promise<PropertySumm
       .select('id, status, created_at, last_renewed_at, unlock_count, view_count')
       .order('created_at', { ascending: false });
 
-    if (error || !data) return null;
+    if (error) {
+      // Fallback query without last_renewed_at if column was not added yet
+      const fallback = await supabase
+        .from('properties')
+        .select('id, status, created_at, unlock_count, view_count')
+        .order('created_at', { ascending: false });
+
+      if (fallback.data) return fallback.data as PropertySummary[];
+      return null;
+    }
+    if (!data) return null;
     return data as PropertySummary[];
   } catch (err) {
     console.warn('fetchPropertiesSummaryFromSupabase error:', err);
@@ -266,6 +276,20 @@ export async function savePropertyToSupabase(prop: Property): Promise<boolean> {
     const { error } = await supabase.from('properties').upsert(row);
     if (error) {
       console.warn('Failed to upsert property to Supabase:', error.message);
+      // If error is about a missing column, safely strip that column and retry
+      if (error.message && (error.message.includes('column') || error.message.includes('schema cache'))) {
+        const match = error.message.match(/column "([^"]+)"/);
+        const colName = match ? match[1] : null;
+        if (colName && row[colName] !== undefined) {
+          delete row[colName];
+          const retry = await supabase.from('properties').upsert(row);
+          if (!retry.error) return true;
+        } else if (row.last_renewed_at !== undefined) {
+          delete row.last_renewed_at;
+          const retry = await supabase.from('properties').upsert(row);
+          if (!retry.error) return true;
+        }
+      }
       return false;
     }
     return true;
