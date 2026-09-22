@@ -142,6 +142,17 @@ export const HouseCard: React.FC<HouseCardProps> = ({
             {property.listingType === 'sale' ? t.sale : t.rent}
           </span>
 
+          {/* Car Use Type Badge (Ride/Transport vs Personal) */}
+          {category === 'car' && property.carUseType && (
+            <span className="px-2.5 py-0.5 rounded-md text-[10px] font-black backdrop-blur-xs shadow-xs w-fit bg-amber-400 text-stone-950 flex items-center gap-1">
+              <span>
+                {property.carUseType === 'ride_transport'
+                  ? (currentLang === 'am' ? '🚖 ራይድ / ትራንስፖርት' : '🚖 Ride / Transport')
+                  : (currentLang === 'am' ? '🚗 የግል / ቤተሰብ' : '🚗 Personal / Family')}
+              </span>
+            </span>
+          )}
+
           {/* Status Badge */}
           {property.status === 'occupied' ? (
             <span className="px-2.5 py-0.8 rounded-md bg-stone-900/90 text-stone-100 text-xs font-bold backdrop-blur-xs flex items-center gap-1 shadow-xs w-fit">

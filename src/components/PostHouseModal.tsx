@@ -29,6 +29,7 @@ import {
   ListingType,
   PropertyImage,
   PaymentMethod,
+  CarUseType,
 } from '../types';
 import {
   ADDIS_AREAS,
@@ -40,7 +41,7 @@ import { translations } from '../data/translations';
 import { compressImage, formatFileSize } from '../utils/imageCompressor';
 import { getStoredSettings, getStoredOwnerProfile, saveOwnerProfile, OwnerProfile, getStoredProperties } from '../utils/storage';
 import { calculateOwnerListingFee, formatEtbPrice } from '../utils/pricing';
-import { hasOwnerUsedPromo, calculatePromoStats } from '../utils/promo';
+import { hasOwnerUsedPromo, calculatePromoStats, hasOwnerUsedCarPromo, calculateCarPromoStats } from '../utils/promo';
 
 interface PostHouseModalProps {
   isOpen: boolean;
@@ -95,6 +96,7 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
   const [areaSqMeters, setAreaSqMeters] = useState<number | ''>('');
 
   // Car-specific specs
+  const [carUseType, setCarUseType] = useState<CarUseType>('personal');
   const [carType, setCarType] = useState('suv');
   const [carMake, setCarMake] = useState('Toyota');
   const [carModel, setCarModel] = useState('RAV4');
@@ -315,11 +317,15 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
     // Tiered Listing Fee calculation
     const calculatedListingFee = calculateOwnerListingFee(Number(price) || 0, listingType, category);
 
-    // Check 1-time promo eligibility for owner (first 100 owners, 1-time only)
+    // Check 1-time promo eligibility for owner (first 100 home owners, or first 50 car owners!)
     const allExistingProps = getStoredProperties();
-    const promoStats = calculatePromoStats(allExistingProps, []);
+    const promoStats = category === 'car'
+      ? calculateCarPromoStats(allExistingProps, [])
+      : calculatePromoStats(allExistingProps, []);
     const cleanOwnerPhone = ownerPhone.trim().replace(/[\s-]/g, '');
-    const ownerHasUsedPromo = hasOwnerUsedPromo(cleanOwnerPhone, allExistingProps);
+    const ownerHasUsedPromo = category === 'car'
+      ? hasOwnerUsedCarPromo(cleanOwnerPhone, allExistingProps)
+      : hasOwnerUsedPromo(cleanOwnerPhone, allExistingProps, 'home');
     const isOwnerPromoFree = !isAdminPost && promoStats.isOwnerPromoAvailable && !ownerHasUsedPromo;
     const finalListingFee = isOwnerPromoFree ? 0 : calculatedListingFee;
 
@@ -385,7 +391,7 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       isPromoFree: isOwnerPromoFree,
       sellerPaymentScreenshotUrl: (isAdminPost || isOwnerPromoFree) ? undefined : (sellerReceiptImage || undefined),
       sellerPaymentMethod: (isAdminPost || isOwnerPromoFree) ? undefined : sellerPaymentMethod,
-      sellerTransactionRef: isAdminPost ? 'ADMIN_DIRECT_POST' : (isOwnerPromoFree ? '100-PROMO-FREE' : (sellerReceiptRef.trim() || undefined)),
+      sellerTransactionRef: isAdminPost ? 'ADMIN_DIRECT_POST' : (isOwnerPromoFree ? (category === 'car' ? '50-CAR-PROMO' : '100-PROMO-FREE') : (sellerReceiptRef.trim() || undefined)),
       status: isAdminPost ? 'active' : 'pending', // Admin posts directly as active! Owner listings require admin review!
       createdAt: now.toISOString(),
       expiresAt: expiresAt.toISOString(),
@@ -404,6 +410,7 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
       areaSqMeters: category === 'home' && areaSqMeters ? Number(areaSqMeters) : undefined,
 
       // Car
+      carUseType: category === 'car' ? carUseType : undefined,
       carType: category === 'car' ? (carType as any) : undefined,
       carMake: category === 'car' ? carMake : undefined,
       carModel: category === 'car' ? carModel : undefined,
@@ -768,10 +775,64 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
 
           {category === 'car' && (
             <div className="p-4 bg-stone-50 dark:bg-stone-850 rounded-2xl border border-stone-200 dark:border-stone-700 space-y-4">
-              <h4 className="text-xs font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wider flex items-center gap-1.5">
-                <Car className="w-4 h-4 text-emerald-600" />
-                <span>Vehicle Specifications</span>
-              </h4>
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-bold text-stone-900 dark:text-stone-100 uppercase tracking-wider flex items-center gap-1.5">
+                  <Car className="w-4 h-4 text-emerald-600" />
+                  <span>{currentLang === 'am' ? 'የመኪናው ዝርዝር መረጃ (Vehicle Specifications)' : 'Vehicle Specifications'}</span>
+                </h4>
+              </div>
+
+              {/* CAR PURPOSE / CATEGORY: RIDE & TRANSPORT VS PERSONAL */}
+              <div>
+                <label className="block text-xs font-bold text-stone-800 dark:text-stone-200 mb-1.5">
+                  {currentLang === 'am' ? 'የመኪናው አጠቃቀም ዘርፍ (Car Purpose / Use)' : 'Car Purpose / Category'} <span className="text-rose-500">*</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setCarUseType('ride_transport')}
+                    className={`p-3 rounded-xl border-2 flex items-center gap-2.5 transition-all cursor-pointer text-left ${
+                      carUseType === 'ride_transport'
+                        ? 'border-emerald-600 bg-emerald-50/90 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-100 shadow-xs'
+                        : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center text-lg shrink-0 shadow-xs">
+                      🚖
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-xs sm:text-sm">
+                        {currentLang === 'am' ? 'ራይድ እና የትራንስፖርት ስራ' : 'Ride & Transport Work'}
+                      </p>
+                      <p className="text-[10px] text-stone-500 dark:text-stone-400 mt-0.5">
+                        {currentLang === 'am' ? 'ሚኒባስ፣ ታክሲ፣ ራይድ፣ ፈጣን ጭነት፣ ቫን' : 'Minibus, Taxi, Ride, Delivery, Van'}
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCarUseType('personal')}
+                    className={`p-3 rounded-xl border-2 flex items-center gap-2.5 transition-all cursor-pointer text-left ${
+                      carUseType === 'personal'
+                        ? 'border-emerald-600 bg-emerald-50/90 dark:bg-emerald-950/50 text-emerald-950 dark:text-emerald-100 shadow-xs'
+                        : 'border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 hover:border-stone-300'
+                    }`}
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center text-lg shrink-0 shadow-xs">
+                      🚗
+                    </div>
+                    <div>
+                      <p className="font-extrabold text-xs sm:text-sm">
+                        {currentLang === 'am' ? 'የግል እና የቤተሰብ መኪና' : 'Personal & Family Use'}
+                      </p>
+                      <p className="text-[10px] text-stone-500 dark:text-stone-400 mt-0.5">
+                        {currentLang === 'am' ? 'ለግል፣ ለቤተሰብ፣ ለቢሮ መመላለሻ' : 'Private, family, or executive driving'}
+                      </p>
+                    </div>
+                  </button>
+                </div>
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
@@ -1037,12 +1098,22 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
           ) : (() => {
             const calculatedFee = calculateOwnerListingFee(Number(price) || 0, listingType, category);
             const allProps = getStoredProperties();
-            const promoStats = calculatePromoStats(allProps, []);
+            const promoStats = category === 'car'
+              ? calculateCarPromoStats(allProps, [])
+              : calculatePromoStats(allProps, []);
             const cleanPhone = ownerPhone.trim().replace(/[\s-]/g, '');
-            const hasUsed = hasOwnerUsedPromo(cleanPhone, allProps);
+            const hasUsed = category === 'car'
+              ? hasOwnerUsedCarPromo(cleanPhone, allProps)
+              : hasOwnerUsedPromo(cleanPhone, allProps, 'home');
             const isPromoEligible = promoStats.isOwnerPromoAvailable && !hasUsed && cleanPhone.length >= 9;
 
             if (isPromoEligible) {
+              const promoTitle = category === 'car'
+                ? (currentLang === 'am' ? 'የ50 መኪና ባለቤቶች ነፃ ዕድል' : '50 Car Owners Promo')
+                : (currentLang === 'am' ? 'የ100 ባለቤቶች ነፃ ዕድል' : '100 Owners Promo');
+              const promoNounAm = category === 'car' ? 'መኪና' : 'ቤት';
+              const promoNounEn = category === 'car' ? 'car' : 'property';
+
               return (
                 <div className="p-4 sm:p-5 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/50 dark:to-teal-950/40 border-2 border-emerald-500 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
@@ -1053,7 +1124,7 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="px-2 py-0.5 rounded-full bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider">
-                            {currentLang === 'am' ? 'የ100 ባለቤቶች ነፃ ዕድል' : '100 Owners Promo'}
+                            {promoTitle}
                           </span>
                           <span className="text-xs text-stone-500 font-semibold">
                             ({promoStats.remainingOwners} {currentLang === 'am' ? 'ቀሪ ቦታዎች' : 'left'})
@@ -1072,14 +1143,14 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
                   <div className="p-3.5 bg-white dark:bg-stone-900 rounded-xl border border-emerald-300 dark:border-emerald-800 text-xs space-y-2">
                     <p className="text-emerald-800 dark:text-emerald-300 font-semibold leading-relaxed">
                       {currentLang === 'am'
-                        ? '🎉 እንኳን ደስ አለዎት! ከመጀመሪያዎቹ 100 ባለቤቶች አንዱ ስለሆኑ የመጀመሪያውን ቤት ያለ ምንም ክፍያ (0 ብር) መመዝገብ ይችላሉ! የገንዘብ ክፍያ ስክሪንሽት አያስፈልግዎትም።'
-                        : '🎉 Congratulations! As one of the first 100 verified property owners, your first listing is completely FREE (0 ETB). No payment receipt screenshot required!'}
+                        ? `🎉 እንኳን ደስ አለዎት! ከመጀመሪያዎቹ ባለቤቶች አንዱ ስለሆኑ የመጀመሪያውን ${promoNounAm} ያለ ምንም ክፍያ (0 ብር) መመዝገብ ይችላሉ! የገንዘብ ክፍያ ስክሪንሽት አያስፈልግዎትም።`
+                        : `🎉 Congratulations! As one of the first verified owners, your first ${promoNounEn} listing is completely FREE (0 ETB). No payment receipt screenshot required!`}
                     </p>
                     <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200">
                       <IdCard className="w-4 h-4 shrink-0 text-amber-600" />
                       <span className="text-[11px] font-bold">
                         {currentLang === 'am'
-                          ? 'የባለቤትነት ማረጋገጫ የመታወቂያ ፊት ፎቶ (National ID) ግዴታ ነው። ቤቱ በአስተዳዳሪው ከተጣራ በኋላ ይለጠፋል።'
+                          ? 'የባለቤትነት ማረጋገጫ የመታወቂያ ፊት ፎቶ (National ID) ግዴታ ነው። በአስተዳዳሪው ከተጣራ በኋላ ይለጠፋል።'
                           : 'National ID front photo is strictly required below to verify ownership. Listing goes live after admin approval.'}
                       </span>
                     </div>
@@ -1110,7 +1181,7 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
                       {t.sellerListingFeeTitle || 'Owner Listing Fee (Tiered Schedule)'}
                     </h4>
                   </div>
-                  <span className="px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-black shadow-xs">
+                  <span className="px-3 py-1 rounded-full bg-emerald-600 text-white text-xs font-black shadow-xs font-mono">
                     {calculatedFee} ETB
                   </span>
                 </div>
@@ -1119,29 +1190,47 @@ export const PostHouseModal: React.FC<PostHouseModalProps> = ({
                   <p className="font-bold text-stone-900 dark:text-white">
                     {currentLang === 'am' ? 'የክፍያ ተመን ሰንጠረዥ (Tier Schedule):' : 'Tiered Pricing Breakdown:'}
                   </p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 text-[11px] text-stone-600 dark:text-stone-300 pt-1">
-                    <span className={`p-1 rounded ${calculatedFee === 200 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      ≤ 15k ➔ <b>200 ብር</b>
-                    </span>
-                    <span className={`p-1 rounded ${calculatedFee === 300 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      15k - 45k ➔ <b>300 ብር</b>
-                    </span>
-                    <span className={`p-1 rounded ${calculatedFee === 400 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      45k - 75k ➔ <b>400 ብር</b>
-                    </span>
-                    <span className={`p-1 rounded ${calculatedFee === 500 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      75k - 100k ➔ <b>500 ብር</b>
-                    </span>
-                    <span className={`p-1 rounded ${calculatedFee === 600 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      100k - 200k ➔ <b>600 ብር</b>
-                    </span>
-                    <span className={`p-1 rounded ${calculatedFee === 700 && listingType !== 'sale' ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      &gt; 200k ➔ <b>700 ብር</b>
-                    </span>
-                    <span className={`p-1 rounded col-span-2 sm:col-span-1 ${listingType === 'sale' ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
-                      ሽያጭ (Sale) ➔ <b>700 ብር</b>
-                    </span>
-                  </div>
+
+                  {category === 'car' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 text-[11px] text-stone-600 dark:text-stone-300 pt-1">
+                      <span className={`p-1.5 rounded ${listingType === 'rent' ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : 'bg-stone-50 dark:bg-stone-800'}`}>
+                        🔑 ኪራይ (Rent) ➔ <b>350 ብር</b>
+                      </span>
+                      <span className={`p-1.5 rounded ${listingType === 'sale' && (Number(price) || 0) < 1000000 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : 'bg-stone-50 dark:bg-stone-800'}`}>
+                        🏷️ ሽያጭ &lt; 1M ➔ <b>500 ብር</b>
+                      </span>
+                      <span className={`p-1.5 rounded ${listingType === 'sale' && (Number(price) || 0) >= 1000000 && (Number(price) || 0) <= 3000000 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : 'bg-stone-50 dark:bg-stone-800'}`}>
+                        🏷️ ሽያጭ 1M - 3M ➔ <b>700 ብር</b>
+                      </span>
+                      <span className={`p-1.5 rounded ${listingType === 'sale' && (Number(price) || 0) > 3000000 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : 'bg-stone-50 dark:bg-stone-800'}`}>
+                        🏷️ ሽያጭ &gt; 3M ➔ <b>1,000 ብር</b>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5 text-[11px] text-stone-600 dark:text-stone-300 pt-1">
+                      <span className={`p-1 rounded ${calculatedFee === 200 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                        ≤ 15k ➔ <b>200 ብር</b>
+                      </span>
+                      <span className={`p-1 rounded ${calculatedFee === 300 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                        15k - 45k ➔ <b>300 ብር</b>
+                      </span>
+                      <span className={`p-1 rounded ${calculatedFee === 400 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                        45k - 75k ➔ <b>400 ብር</b>
+                      </span>
+                      <span className={`p-1 rounded ${calculatedFee === 500 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                        75k - 100k ➔ <b>500 ብር</b>
+                      </span>
+                      <span className={`p-1 rounded ${calculatedFee === 600 ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                        100k - 200k ➔ <b>600 ብር</b>
+                      </span>
+                      <span className={`p-1 rounded ${calculatedFee === 700 && listingType !== 'sale' ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                        &gt; 200k ➔ <b>700 ብር</b>
+                      </span>
+                      <span className={`p-1 rounded col-span-2 sm:col-span-1 ${listingType === 'sale' ? 'bg-emerald-100 dark:bg-emerald-900/60 font-black text-emerald-800 dark:text-emerald-200 border border-emerald-500' : ''}`}>
+                        ሽያጭ (Sale) ➔ <b>700 ብር</b>
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <p className="text-xs text-stone-600 dark:text-stone-300 leading-relaxed">

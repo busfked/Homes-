@@ -23,7 +23,7 @@ import {
   Share2
 } from 'lucide-react';
 import { Language, CategoryType, PropertyType, ListingType, UserAccount } from '../types';
-import { ADDIS_AREAS, PROPERTY_TYPES } from '../data/addisAreas';
+import { ADDIS_AREAS, PROPERTY_TYPES, CAR_TYPES } from '../data/addisAreas';
 import { translations } from '../data/translations';
 
 interface WelcomeDashboardProps {
@@ -40,6 +40,8 @@ interface WelcomeDashboardProps {
   setMaxPrice: (price: number) => void;
   selectedBedrooms: string;
   setSelectedBedrooms: (beds: string) => void;
+  selectedCarUseType?: string;
+  setSelectedCarUseType?: (useType: string) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   onlyAvailable: boolean;
@@ -68,6 +70,8 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
   setMaxPrice,
   selectedBedrooms,
   setSelectedBedrooms,
+  selectedCarUseType = 'all',
+  setSelectedCarUseType,
   searchQuery,
   setSearchQuery,
   onlyAvailable,
@@ -278,20 +282,20 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
               </span>
             </button>
 
-            {/* Cars (Teased Coming Soon) */}
+            {/* Cars (Now Active!) */}
             <button
               id="cat-tab-car"
               onClick={() => setSelectedCategory('car')}
               className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
                 selectedCategory === 'car'
-                  ? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900 shadow-md'
-                  : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white'
+                  ? 'bg-emerald-600 text-white shadow-md'
+                  : 'text-stone-700 dark:text-stone-300 hover:text-stone-900 dark:hover:text-white bg-white/60 dark:bg-stone-800'
               }`}
             >
-              <Car className="w-4 h-4 text-emerald-500" />
-              <span>{currentLang === 'am' ? 'መኪኖች (Cars)' : 'Cars'}</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold">
-                {currentLang === 'am' ? 'በቅርብ ቀን' : 'Coming Soon'}
+              <Car className="w-4 h-4" />
+              <span>{currentLang === 'am' ? '🚗 መኪኖች (Cars)' : '🚗 Cars'}</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-stone-950 text-[10px] font-black shadow-xs">
+                {currentLang === 'am' ? '50 ነፃ ዕድል' : '50 Free Promo'}
               </span>
             </button>
 
@@ -314,11 +318,11 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
           </div>
         </div>
 
-        {/* If Cars or Machineries are selected, show dedicated Coming Soon Showcase Card */}
-        {selectedCategory !== 'home' ? (
+        {/* If Machineries is selected, show dedicated Coming Soon Showcase Card */}
+        {selectedCategory === 'machinery' ? (
           <div className="bg-white dark:bg-stone-900 rounded-3xl p-6 sm:p-10 shadow-lg border border-stone-200 dark:border-stone-800 max-w-2xl mx-auto text-center animate-in fade-in zoom-in-95 duration-200">
             <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto mb-4">
-              {selectedCategory === 'car' ? <Car className="w-8 h-8" /> : <Tractor className="w-8 h-8" />}
+              <Tractor className="w-8 h-8" />
             </div>
 
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-xs font-black uppercase tracking-wider mb-2">
@@ -327,21 +331,13 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
             </div>
 
             <h3 className="text-xl sm:text-2xl font-black text-stone-900 dark:text-stone-100 mb-2">
-              {selectedCategory === 'car'
-                ? currentLang === 'am'
-                  ? 'የመኪና ደላላ አገልግሎት በቅርብ ቀን ይጀምራል!'
-                  : 'Car & Vehicle Brokerage is Launching Soon!'
-                : currentLang === 'am'
+              {currentLang === 'am'
                 ? 'የከባድ ማሽነሪ ደላላ አገልግሎት በቅርብ ቀን ይጀምራል!'
                 : 'Heavy Machinery Brokerage is Launching Soon!'}
             </h3>
 
             <p className="text-sm text-stone-600 dark:text-stone-300 mb-6 leading-relaxed max-w-md mx-auto">
-              {selectedCategory === 'car'
-                ? currentLang === 'am'
-                  ? 'በአሁኑ ሰዓት በአዲስ አበባ የተረጋገጡ የመኪና ባለቤቶችን እና ጋራዦችን በማስመዝገብ ላይ ነን። አሁን ላይ የቤት ደላላ አገልግሎታችን ሙሉ በሙሉ በስራ ላይ ይገኛል።'
-                  : 'We are currently onboarding verified vehicle sellers and dealerships across Addis Ababa. Our home and property brokerage is fully operational today.'
-                : currentLang === 'am'
+              {currentLang === 'am'
                 ? 'ኤክስካቫተር፣ ሎደር፣ ክሬን እና ትራክተር የመሳሰሉ ከባድ ማሽነሪዎችን በቀጥታ ከባለቤቱ ጋር የሚያገናኝ አገልግሎት በቅርብ ቀን ይጀመራል።'
                 : 'Excavator, wheel loader, crane, and agricultural tractor direct brokerage is launching shortly.'}
             </p>
@@ -364,8 +360,86 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
             </div>
           </div>
         ) : (
-          /* Detailed User Finding Search & Filter Menu for Homes */
+          /* Search & Filter Menu for Homes & Cars */
           <div className="bg-white dark:bg-stone-900 rounded-3xl p-4 sm:p-6 shadow-md border border-stone-200 dark:border-stone-800">
+            {/* CAR PROMO BANNER (when Cars selected) */}
+            {selectedCategory === 'car' && (
+              <div className="mb-4 p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-400 text-stone-950 flex items-center justify-center shrink-0 font-black shadow-xs">
+                    <Car className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-stone-900 dark:text-white text-xs sm:text-sm flex items-center gap-1.5">
+                      <span>{currentLang === 'am' ? '🎉 የ 50 መኪኖች ነፃ ዕድል ስራ ጀምሯል!' : '🎉 50 Car Promo is Live!'}</span>
+                      <span className="bg-amber-400 text-stone-950 text-[10px] px-2 py-0.2 rounded-full font-black uppercase">
+                        0 ETB
+                      </span>
+                    </h4>
+                    <p className="text-[11px] text-stone-600 dark:text-stone-300">
+                      {currentLang === 'am'
+                        ? 'ለመጀመሪያዎቹ 50 የመኪና ባለቤቶች 0 ብር ምዝገባ • ለመጀመሪያዎቹ 50 ፈላጊዎች 5 መኪኖችን በነፃ የመክፈት ዕድል!'
+                        : 'First 50 car owners list for 0 ETB • First 50 buyers/renters get 5 free car unlocks!'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onPostHouseClick}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs shrink-0 cursor-pointer shadow-xs active:scale-95 transition-all"
+                >
+                  {currentLang === 'am' ? '+ መኪና ያስመዝግቡ' : '+ Post Car'}
+                </button>
+              </div>
+            )}
+
+            {/* CAR PURPOSE FILTER (Ride & Transport vs Personal) */}
+            {selectedCategory === 'car' && setSelectedCarUseType && (
+              <div className="mb-4">
+                <div className="text-xs font-black text-stone-500 dark:text-stone-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Car className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>{currentLang === 'am' ? 'የመኪናው አጠቃቀም እና ስራ' : 'Car Purpose & Category'}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCarUseType('all')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 border ${
+                      selectedCarUseType === 'all'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:border-emerald-400'
+                    }`}
+                  >
+                    <span>🚗 {currentLang === 'am' ? 'ሁሉም መኪኖች' : 'All Cars'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCarUseType('ride_transport')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 border ${
+                      selectedCarUseType === 'ride_transport'
+                        ? 'bg-amber-400 text-stone-950 border-amber-500 shadow-xs'
+                        : 'bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:border-amber-400'
+                    }`}
+                  >
+                    <span>🚖 {currentLang === 'am' ? 'ራይድ እና የትራንስፖርት ስራ' : 'Ride & Transport'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCarUseType('personal')}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 border ${
+                      selectedCarUseType === 'personal'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:border-emerald-400'
+                    }`}
+                  >
+                    <span>🚘 {currentLang === 'am' ? 'የግል እና የቤተሰብ መኪና' : 'Personal & Family'}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Primary Search Bar */}
             <div className="relative mb-4">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-emerald-600 dark:text-emerald-400" />
@@ -375,9 +449,13 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={
-                  currentLang === 'am'
-                    ? 'በአካባቢ፣ ምልክት ወይም ርዕስ ይፈልጉ (ቦሌ፣ ገርጂ፣ ኮንዶሚኒየም፣ ቪላ፣ አፓርታማ...)...'
-                    : 'Search by neighborhood, landmark, or keyword (Bole, Gerji, Condo, Villa, Apartment...)...'
+                  selectedCategory === 'car'
+                    ? (currentLang === 'am'
+                        ? 'በመኪና አይነት፣ ሞዴል ወይም አካባቢ ይፈልጉ (Toyota, Vitz, RAV4, ኮድ 3፣ ቦሌ...)...'
+                        : 'Search cars by make, model, year, or area (Toyota, Vitz, RAV4, Bole...)...')
+                    : (currentLang === 'am'
+                        ? 'በአካባቢ፣ ምልክት ወይም ርዕስ ይፈልጉ (ቦሌ፣ ገርጂ፣ ኮንዶሚኒየም፣ ቪላ፣ አፓርታማ...)...'
+                        : 'Search by neighborhood, landmark, or keyword (Bole, Gerji, Condo, Villa, Apartment...)...')
                 }
                 className="w-full pl-12 pr-4 py-3.5 bg-stone-50 dark:bg-stone-800/80 border border-stone-200 dark:border-stone-700 rounded-2xl text-sm sm:text-base text-stone-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all placeholder:text-stone-400 dark:placeholder:text-stone-500 font-medium"
               />
@@ -453,10 +531,12 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
                 </select>
               </div>
 
-              {/* 2. Property Type */}
+              {/* 2. Property or Car Type */}
               <div className="lg:col-span-1">
                 <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
-                  {t.filterType}
+                  {selectedCategory === 'car'
+                    ? (currentLang === 'am' ? 'የመኪና አይነት' : 'Vehicle Type')
+                    : t.filterType}
                 </label>
                 <select
                   id="filter-type"
@@ -465,11 +545,17 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
                   className="w-full py-2.5 px-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
                 >
                   <option value="all">{t.filterAllTypes}</option>
-                  {PROPERTY_TYPES.map((pt) => (
-                    <option key={pt.id} value={pt.id}>
-                      {currentLang === 'am' ? pt.nameAm : pt.nameEn}
-                    </option>
-                  ))}
+                  {selectedCategory === 'car'
+                    ? CAR_TYPES.map((ct) => (
+                        <option key={ct.id} value={ct.id}>
+                          {currentLang === 'am' ? ct.nameAm : ct.nameEn}
+                        </option>
+                      ))
+                    : PROPERTY_TYPES.map((pt) => (
+                        <option key={pt.id} value={pt.id}>
+                          {currentLang === 'am' ? pt.nameAm : pt.nameEn}
+                        </option>
+                      ))}
                 </select>
               </div>
 
@@ -485,29 +571,49 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
                   className="w-full py-2.5 px-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
                 >
                   <option value="all">{t.allListings}</option>
-                  <option value="rent">{t.rent}</option>
+                  <option value="rent">{selectedCategory === 'car' ? (currentLang === 'am' ? 'ኪራይ (350 ብር)' : 'Rental (350 ETB)') : t.rent}</option>
                   <option value="sale">{t.sale}</option>
                 </select>
               </div>
 
-              {/* 4. Bedrooms Filter */}
+              {/* 4. Bedrooms Filter or Transmission Filter */}
               <div className="lg:col-span-1">
-                <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
-                  {t.filterBedrooms}
-                </label>
-                <select
-                  id="filter-bedrooms"
-                  value={selectedBedrooms}
-                  onChange={(e) => setSelectedBedrooms(e.target.value)}
-                  className="w-full py-2.5 px-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
-                >
-                  <option value="all">{t.filterAllBeds}</option>
-                  <option value="0">Studio (0 {t.beds})</option>
-                  <option value="1">1 {t.beds}</option>
-                  <option value="2">2 {t.beds}</option>
-                  <option value="3">3 {t.beds}</option>
-                  <option value="4">4+ {t.beds}</option>
-                </select>
+                {selectedCategory === 'car' ? (
+                  <>
+                    <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                      {currentLang === 'am' ? 'የማርሽ አይነት' : 'Transmission'}
+                    </label>
+                    <select
+                      id="filter-bedrooms"
+                      value={selectedBedrooms}
+                      onChange={(e) => setSelectedBedrooms(e.target.value)}
+                      className="w-full py-2.5 px-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                    >
+                      <option value="all">{currentLang === 'am' ? 'ሁሉም ማርሽ' : 'All Transmissions'}</option>
+                      <option value="automatic">{currentLang === 'am' ? 'ኦቶማቲክ (Automatic)' : 'Automatic'}</option>
+                      <option value="manual">{currentLang === 'am' ? 'ማኑዋል (Manual)' : 'Manual'}</option>
+                    </select>
+                  </>
+                ) : (
+                  <>
+                    <label className="block font-bold text-stone-700 dark:text-stone-300 mb-1">
+                      {t.filterBedrooms}
+                    </label>
+                    <select
+                      id="filter-bedrooms"
+                      value={selectedBedrooms}
+                      onChange={(e) => setSelectedBedrooms(e.target.value)}
+                      className="w-full py-2.5 px-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
+                    >
+                      <option value="all">{t.filterAllBeds}</option>
+                      <option value="0">Studio (0 {t.beds})</option>
+                      <option value="1">1 {t.beds}</option>
+                      <option value="2">2 {t.beds}</option>
+                      <option value="3">3 {t.beds}</option>
+                      <option value="4">4+ {t.beds}</option>
+                    </select>
+                  </>
+                )}
               </div>
 
               {/* 5. Max Budget / Price Range Filter */}
@@ -522,12 +628,25 @@ export const WelcomeDashboard: React.FC<WelcomeDashboardProps> = ({
                   className="w-full py-2.5 px-3 bg-stone-50 dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-800 dark:text-stone-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-medium"
                 >
                   <option value={0}>{currentLang === 'am' ? 'ማንኛውም ዋጋ' : 'Any Budget'}</option>
-                  <option value={20000}>≤ 20,000 ETB</option>
-                  <option value={40000}>≤ 40,000 ETB</option>
-                  <option value={80000}>≤ 80,000 ETB</option>
-                  <option value={150000}>≤ 150,000 ETB</option>
-                  <option value={500000}>≤ 500,000 ETB</option>
-                  <option value={5000000}>≤ 5,000,000 ETB</option>
+                  {selectedCategory === 'car' ? (
+                    <>
+                      <option value={500000}>≤ 500,000 ETB</option>
+                      <option value={1000000}>≤ 1,000,000 ETB</option>
+                      <option value={2000000}>≤ 2,000,000 ETB</option>
+                      <option value={3000000}>≤ 3,000,000 ETB</option>
+                      <option value={5000000}>≤ 5,000,000 ETB</option>
+                      <option value={10000000}>≤ 10,000,000 ETB</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value={20000}>≤ 20,000 ETB</option>
+                      <option value={40000}>≤ 40,000 ETB</option>
+                      <option value={80000}>≤ 80,000 ETB</option>
+                      <option value={150000}>≤ 150,000 ETB</option>
+                      <option value={500000}>≤ 500,000 ETB</option>
+                      <option value={5000000}>≤ 5,000,000 ETB</option>
+                    </>
+                  )}
                 </select>
               </div>
 

@@ -7,6 +7,8 @@ export type PropertyType = 'apartment' | 'condominium' | 'villa' | 'studio' | 'g
 
 export type CarType = 'sedan' | 'suv' | 'pickup' | 'hatchback' | 'minibus' | 'truck' | 'electric_car' | 'van';
 
+export type CarUseType = 'ride_transport' | 'personal';
+
 export type MachineryType = 'excavator' | 'wheel_loader' | 'dump_truck' | 'crane' | 'generator' | 'tractor' | 'forklift' | 'roller' | 'concrete_mixer' | 'other';
 
 export type ListingType = 'rent' | 'sale';
@@ -35,6 +37,7 @@ export interface Property {
   machineryType?: MachineryType; // For machineries
   
   // Car specific properties
+  carUseType?: CarUseType; // 'ride_transport' | 'personal'
   carMake?: string; // Toyota, Hyundai, Suzuki, BYD, Isuzu, etc.
   carModel?: string; // Corolla, Tucson, Dzire, Atto 3, etc.
   carYear?: number; // 2023, etc.
@@ -90,7 +93,12 @@ export type PackageTierId =
   | 'tier_200k'
   | 'tier_above200k'
   | 'tier_unlimited'
-  | 'tier_sale';
+  | 'tier_sale'
+  | 'tier_car_rent'
+  | 'tier_car_sale_sub1m'
+  | 'tier_car_sale_1m_3m'
+  | 'tier_car_sale_above3m'
+  | 'tier_car_promo';
 
 export interface UserCreditPackage {
   id?: string;
@@ -102,6 +110,7 @@ export interface UserCreditPackage {
   totalPurchased: number; // 5
   purchasedAt: string;
   isPromo?: boolean; // 1-time 100 Launch Promo package
+  category?: CategoryType; // 'home' | 'car'
 }
 
 export interface UserAccount {
@@ -114,6 +123,8 @@ export interface UserAccount {
   packages: UserCreditPackage[];
   hasUsedPromo?: boolean; // True once user claimed their 1-time 5-home promo
   promoClaimedAt?: string;
+  hasUsedCarPromo?: boolean; // True once user claimed their 1-time 5-car promo
+  carPromoClaimedAt?: string;
 }
 
 export type UnlockRequestType = 'single_property' | 'credit_package' | 'package_purchase' | 'owner_listing_fee' | 'single_unlock';

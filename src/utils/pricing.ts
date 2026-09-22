@@ -89,13 +89,81 @@ export const PRICE_TIERS: PriceTier[] = [
 ];
 
 /**
- * Identify matching tier for a property
+ * 5-Car Unlock & Owner Listing Tiers:
+ * 1. Rental: Flat 350 ETB for any car rental (unlocks 5 rental cars)
+ * 2. Sale:
+ *    - < 1,000,000 ETB: 500 ETB (unlocks 5 cars under 1M)
+ *    - 1,000,000 - 3,000,000 ETB: 700 ETB (unlocks 5 cars 1M - 3M)
+ *    - > 3,000,000 ETB: 1,000 ETB (unlocks 5 cars above 3M)
+ * Owner listing fee and user 5-car unlock package fee are identical.
+ */
+export const CAR_PRICE_TIERS: PriceTier[] = [
+  {
+    id: 'tier_car_rent',
+    nameEn: 'Car Rental Tier (All Rentals)',
+    nameAm: 'የመኪና ኪራይ ደረጃ (ለሁሉም ኪራይ)',
+    fee: 350,
+    maxPrice: 999999999,
+    unlockCount: 5,
+    descriptionEn: 'Flat 350 ETB to unlock 5 rental cars of any type',
+    descriptionAm: 'ለማንኛውም አይነት የመኪና ኪራይ 5 መኪኖችን ለመክፈት ቋሚ 350 ብር',
+  },
+  {
+    id: 'tier_car_sale_sub1m',
+    nameEn: 'Car Sale Tier (< 1 Million ETB)',
+    nameAm: 'የመኪና ሽያጭ ደረጃ (ከ 1 ሚሊዮን ብር በታች)',
+    fee: 500,
+    maxPrice: 1000000,
+    unlockCount: 5,
+    descriptionEn: '500 ETB to unlock 5 cars priced under 1 Million ETB',
+    descriptionAm: 'ዋጋቸው ከ 1 ሚሊዮን ብር በታች የሆኑ 5 መኪኖችን ለመክፈት 500 ብር',
+  },
+  {
+    id: 'tier_car_sale_1m_3m',
+    nameEn: 'Car Sale Tier (1M – 3 Million ETB)',
+    nameAm: 'የመኪና ሽያጭ ደረጃ (ከ 1 እስከ 3 ሚሊዮን ብር)',
+    fee: 700,
+    maxPrice: 3000000,
+    unlockCount: 5,
+    descriptionEn: '700 ETB to unlock 5 cars priced between 1M and 3M ETB',
+    descriptionAm: 'ዋጋቸው ከ 1 እስከ 3 ሚሊዮን ብር የሆኑ 5 መኪኖችን ለመክፈት 700 ብር',
+  },
+  {
+    id: 'tier_car_sale_above3m',
+    nameEn: 'Car Sale Tier (> 3 Million ETB)',
+    nameAm: 'የመኪና ሽያጭ ደረጃ (ከ 3 ሚሊዮን ብር በላይ)',
+    fee: 1000,
+    maxPrice: 999999999,
+    unlockCount: 5,
+    descriptionEn: '1,000 ETB to unlock 5 cars priced above 3 Million ETB',
+    descriptionAm: 'ዋጋቸው ከ 3 ሚሊዮን ብር በላይ የሆኑ 5 መኪኖችን ለመክፈት 1,000 ብር',
+  },
+];
+
+/**
+ * Identify matching tier for a property (Home or Car)
  */
 export function getTierForProperty(
   price: number,
   listingType?: ListingType,
-  _category?: CategoryType
+  category: CategoryType = 'home'
 ): PriceTier {
+  // CAR TIERS
+  if (category === 'car') {
+    if (listingType === 'rent') {
+      return CAR_PRICE_TIERS[0]; // Flat 350 ETB for any car rental
+    }
+    // Car Sale: < 1M -> 500 ETB, 1M-3M -> 700 ETB, > 3M -> 1000 ETB
+    if (price < 1000000) {
+      return CAR_PRICE_TIERS[1]; // 500 ETB
+    } else if (price <= 3000000) {
+      return CAR_PRICE_TIERS[2]; // 700 ETB
+    } else {
+      return CAR_PRICE_TIERS[3]; // 1000 ETB
+    }
+  }
+
+  // HOME TIERS
   if (listingType === 'sale') {
     return PRICE_TIERS[6]; // Flat 700 ETB for all sales
   }
@@ -117,12 +185,12 @@ export function getTierForProperty(
 }
 
 /**
- * Calculate the unlock fee for a single house / 5-house bundle
+ * Calculate the unlock fee for a single house / 5-house bundle or car
  */
 export function calculateTierFee(
   price: number,
   listingType?: ListingType,
-  category?: CategoryType
+  category: CategoryType = 'home'
 ): number {
   const tier = getTierForProperty(price, listingType, category);
   return tier.fee;
@@ -130,6 +198,7 @@ export function calculateTierFee(
 
 export const calculateOwnerListingFee = calculateTierFee;
 export const calculateHouseUnlockFee = calculateTierFee;
+export const calculateCarUnlockFee = calculateTierFee;
 
 /**
  * Format currency in Ethiopian Birr with commas

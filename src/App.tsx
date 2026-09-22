@@ -149,6 +149,7 @@ export default function App() {
 
   // Category & Filter States (initialized from URL if present)
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>(initialUrlData.filters.category || 'home');
+  const [selectedCarUseType, setSelectedCarUseType] = useState<string>('all');
   const [selectedArea, setSelectedArea] = useState<string>(initialUrlData.filters.area || 'all');
   const [selectedType, setSelectedType] = useState<string>(initialUrlData.filters.type || 'all');
   const [selectedListingType, setSelectedListingType] = useState<string>(initialUrlData.filters.listingType || 'all');
@@ -530,9 +531,9 @@ export default function App() {
 
   // Add New Property (from PostHouseModal)
   const handleAddProperty = (newProp: Property) => {
-    // Only direct admin posts bypass approval. Owner submissions must always be
-    // reviewed against their payment proof before appearing publicly.
-    const shouldAutoApprove = Boolean(isAdminPosting);
+    // Admin posts or free launch promo listings are immediately published live on the front page.
+    // Paid owner listings requiring receipt review sit in pending status until approved.
+    const shouldAutoApprove = Boolean(isAdminPosting) || Boolean(newProp.isPromoFree);
     const finalProp: Property = {
       ...newProp,
       status: shouldAutoApprove ? 'active' : 'pending',
@@ -1064,6 +1065,13 @@ export default function App() {
         return false;
       }
 
+      // Car purpose filter (Ride & Transport vs Personal)
+      if (propCategory === 'car' && selectedCarUseType !== 'all') {
+        if (p.carUseType && p.carUseType !== selectedCarUseType) {
+          return false;
+        }
+      }
+
       // Area filter
       if (selectedArea !== 'all') {
         const matchArea =
@@ -1072,9 +1080,17 @@ export default function App() {
         if (!matchArea) return false;
       }
 
-      // Property type filter
-      if (selectedType !== 'all' && p.propertyType !== selectedType) {
-        return false;
+      // Property type filter (Homes: propertyType, Cars: carType, Machinery: machineryType)
+      if (selectedType !== 'all') {
+        if (propCategory === 'car') {
+          const matchCarType = p.carType === selectedType || p.propertyType === selectedType;
+          if (!matchCarType) return false;
+        } else if (propCategory === 'machinery') {
+          const matchMachinery = (p as any).machineryType === selectedType || p.propertyType === selectedType;
+          if (!matchMachinery) return false;
+        } else {
+          if (p.propertyType !== selectedType) return false;
+        }
       }
 
       // Listing type filter (Rent vs Sale)
@@ -1087,12 +1103,20 @@ export default function App() {
         return false;
       }
 
-      // Bedrooms filter
+      // Bedrooms filter for homes, or Transmission filter for cars
       if (selectedBedrooms !== 'all') {
-        const bedNum = Number(selectedBedrooms);
-        if (selectedBedrooms === '0' && p.bedrooms !== 0) return false;
-        if (selectedBedrooms === '4' && (!p.bedrooms || p.bedrooms < 4)) return false;
-        if (selectedBedrooms !== '4' && selectedBedrooms !== '0' && p.bedrooms !== bedNum) return false;
+        if (propCategory === 'car') {
+          if (selectedBedrooms === 'automatic' || selectedBedrooms === 'manual') {
+            if (p.transmission && p.transmission.toLowerCase() !== selectedBedrooms.toLowerCase()) {
+              return false;
+            }
+          }
+        } else if (propCategory === 'home') {
+          const bedNum = Number(selectedBedrooms);
+          if (selectedBedrooms === '0' && p.bedrooms !== 0) return false;
+          if (selectedBedrooms === '4' && (!p.bedrooms || p.bedrooms < 4)) return false;
+          if (selectedBedrooms !== '4' && selectedBedrooms !== '0' && p.bedrooms !== bedNum) return false;
+        }
       }
 
       // Available only filter
@@ -1110,8 +1134,10 @@ export default function App() {
         const matchDesc = p.description.toLowerCase().includes(query);
         const matchDescAm = p.descriptionAm?.toLowerCase().includes(query);
         const matchExact = p.exactLandmark?.toLowerCase().includes(query);
+        const matchMake = p.carMake?.toLowerCase().includes(query);
+        const matchModel = p.carModel?.toLowerCase().includes(query);
 
-        if (!matchTitle && !matchTitleAm && !matchArea && !matchAreaAm && !matchDesc && !matchDescAm && !matchExact) {
+        if (!matchTitle && !matchTitleAm && !matchArea && !matchAreaAm && !matchDesc && !matchDescAm && !matchExact && !matchMake && !matchModel) {
           return false;
         }
       }
@@ -1121,6 +1147,7 @@ export default function App() {
   }, [
     properties,
     selectedCategory,
+    selectedCarUseType,
     selectedArea,
     selectedType,
     selectedListingType,
@@ -1131,6 +1158,7 @@ export default function App() {
   ]);
 
   const resetFilters = () => {
+    setSelectedCarUseType('all');
     setSelectedArea('all');
     setSelectedType('all');
     setSelectedListingType('all');
@@ -1173,6 +1201,8 @@ export default function App() {
           currentLang={currentLang}
           selectedCategory={selectedCategory}
           setSelectedCategory={setSelectedCategory}
+          selectedCarUseType={selectedCarUseType}
+          setSelectedCarUseType={setSelectedCarUseType}
           selectedArea={selectedArea}
           setSelectedArea={setSelectedArea}
           selectedType={selectedType}
@@ -1203,13 +1233,23 @@ export default function App() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h2 className="text-xl sm:text-2xl font-black text-stone-900 dark:text-stone-100 tracking-tight flex items-center gap-2">
-                <span>{t.browseHouses}</span>
+                <span>
+                  {selectedCategory === 'car'
+                    ? (currentLang === 'am' ? 'የሚከራዩና የሚሸጡ መኪናዎች' : 'Available Cars for Rent & Sale')
+                    : selectedCategory === 'machinery'
+                    ? (currentLang === 'am' ? 'ማሽነሪዎችና የከባድ መሳሪያዎች' : 'Machinery & Heavy Equipment')
+                    : t.browseHouses}
+                </span>
                 <span className="text-sm font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-full border border-emerald-300/40 dark:border-emerald-800">
                   {filteredProperties.length}
                 </span>
               </h2>
               <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 mt-0.5">
-                {currentLang === 'am'
+                {selectedCategory === 'car'
+                  ? (currentLang === 'am'
+                      ? 'የራይድና ትራንስፖርት መኪኖች፣ የቤት አውቶሞቢሎች፣ ፒካፖችና ቫኖች (ቦሌ፣ መገናኛ፣ ሳሪስ ወዘተ)'
+                      : 'Ride/Transport cars, personal sedans, SUVs, pickups and vans across Addis Ababa')
+                  : currentLang === 'am'
                   ? 'ቦሌ፣ ገርጂ፣ ቡልቡላ፣ መገናኛ፣ ሲኤምሲ እና ሌሎች አካባቢዎች'
                   : 'Bole, Gerji, Bulbula, Megenagna, CMC and other neighborhoods'}
               </p>

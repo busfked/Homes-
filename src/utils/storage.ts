@@ -1,7 +1,7 @@
-import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId, Language, Review } from '../types';
+import { Property, UnlockRequest, PaymentSettings, ReportedBroker, UserAccount, UserCreditPackage, PackageTierId, Language, Review, CategoryType } from '../types';
 import { SAMPLE_PROPERTIES, SAMPLE_UNLOCK_REQUESTS, DEFAULT_SETTINGS, SAMPLE_REVIEWS } from '../data/sampleListings';
-import { PRICE_TIERS } from './pricing';
-import { hasUserUsedPromo } from './promo';
+import { PRICE_TIERS, CAR_PRICE_TIERS } from './pricing';
+import { hasUserUsedPromo, hasUserUsedCarPromo } from './promo';
 import {
   idbSaveProperties,
   idbGetProperties,
@@ -441,12 +441,13 @@ export function getPackageChoiceInfo(
 }
 
 /**
- * Checks if user has an active credit package that can unlock a house of this price
+ * Checks if user has an active credit package that can unlock a house or car of this price
  */
 export function getEligiblePackageForPrice(
   user: UserAccount | null | undefined,
   price: number,
-  listingType?: string
+  listingType?: string,
+  category: CategoryType = 'home'
 ): UserCreditPackage | null {
   if (!user || !user.packages || user.packages.length === 0) return null;
 
@@ -455,6 +456,51 @@ export function getEligiblePackageForPrice(
       if (pkg.tierId === 'tier_unlimited') {
         return pkg;
       }
+
+      // CAR PACKAGES
+      if (category === 'car') {
+        if (pkg.tierId === 'tier_car_promo') {
+          return pkg;
+        }
+        if (listingType === 'rent') {
+          if (pkg.tierId === 'tier_car_rent') {
+            return pkg;
+          }
+        } else {
+          // Car sale: < 1M (500 ETB), 1M-3M (700 ETB), > 3M (1000 ETB)
+          if (price < 1000000) {
+            if (
+              pkg.tierId === 'tier_car_sale_sub1m' ||
+              pkg.tierId === 'tier_car_sale_1m_3m' ||
+              pkg.tierId === 'tier_car_sale_above3m'
+            ) {
+              return pkg;
+            }
+          } else if (price <= 3000000) {
+            if (
+              pkg.tierId === 'tier_car_sale_1m_3m' ||
+              pkg.tierId === 'tier_car_sale_above3m'
+            ) {
+              return pkg;
+            }
+          } else {
+            if (pkg.tierId === 'tier_car_sale_above3m') {
+              return pkg;
+            }
+          }
+          if (pkg.category === 'car' && (pkg.maxPrice || 0) >= price) {
+            return pkg;
+          }
+        }
+        continue;
+      }
+
+      // HOME PACKAGES
+      if (pkg.tierId === 'tier_car_promo' || pkg.tierId === 'tier_car_rent' || pkg.tierId === 'tier_car_sale_sub1m' || pkg.tierId === 'tier_car_sale_1m_3m' || pkg.tierId === 'tier_car_sale_above3m') {
+        // Car specific packages do not unlock homes
+        continue;
+      }
+
       if (listingType === 'sale') {
         if (pkg.tierId === 'tier_sale' || (pkg.maxPrice && pkg.maxPrice >= 500000)) {
           return pkg;
@@ -470,13 +516,14 @@ export function getEligiblePackageForPrice(
 }
 
 /**
- * Deduct 1 credit from user package and unlock the property
+ * Deduct 1 credit from user package and unlock the property (House or Car)
  */
 export function deductUserCreditAndUnlock(
   userPhoneOrId: string,
   propertyId: string,
   propertyPrice: number,
-  listingType?: string
+  listingType?: string,
+  category: CategoryType = 'home'
 ): { success: boolean; message: string; updatedUser?: UserAccount } {
   const allUsers = getStoredUsers();
   const cleanPhone = userPhoneOrId.replace(/[\s-]/g, '');
@@ -494,19 +541,20 @@ export function deductUserCreditAndUnlock(
   }
 
   // Find eligible package (must have remaining unlocks and cover this price or be unlimited)
-  const pkgIdx = user.packages.findIndex(p => {
-    if (p.remainingUnlocks <= 0) return false;
-    if (p.tierId === 'tier_unlimited') return true;
-    if (listingType === 'sale') {
-      return p.tierId === 'tier_sale' || p.maxPrice >= 500000;
-    }
-    return propertyPrice <= p.maxPrice;
-  });
+  const eligible = getEligiblePackageForPrice(user, propertyPrice, listingType, category);
+  if (!eligible) {
+    const noun = category === 'car' ? 'car' : 'house';
+    return {
+      success: false,
+      message: `No active credit package available for this ${noun}. Please unlock to get a 5-${noun} package.`,
+    };
+  }
 
+  const pkgIdx = user.packages.findIndex(p => p === eligible || (p.tierId === eligible.tierId && p.purchasedAt === eligible.purchasedAt));
   if (pkgIdx < 0) {
     return {
       success: false,
-      message: 'No active credit package available for this price range. Please unlock to get a 5-house package.',
+      message: 'No active credit package available for this item.',
     };
   }
 
@@ -527,9 +575,10 @@ export function deductUserCreditAndUnlock(
   saveUsers(allUsers);
   saveActiveUserSession(updatedUser);
 
+  const nounAm = category === 'car' ? 'መኪና' : 'ቤት';
   return {
     success: true,
-    message: `Unlocked successfully! ${updatedPackages[pkgIdx].remainingUnlocks} unlocks remaining in your package.`,
+    message: `ስኬታማ! የቀረዎት የመክፈቻ ብዛት: ${updatedPackages[pkgIdx].remainingUnlocks} ${nounAm} (${updatedPackages[pkgIdx].remainingUnlocks} unlocks remaining in your package).`,
     updatedUser,
   };
 }
@@ -771,6 +820,145 @@ export function claimUserPromo5Homes(
   const welcomeMsg = autoUnlockPropertyId
     ? `🎉 ተሳክቷል! የቤቱ ባለቤት ስልክ ወዲያውኑ ተከፍቷል። በተጨማሪም 4 ተጨማሪ ቤቶችን በነጻ መክፈት ይችላሉ!`
     : `🎉 የ100 ነፃ ዕድል ተከፍቷል! 5 ቤቶችን ያለ ምንም ክፍያ እና ያለምንም ፍቃድ መጠበቅ በነፃ መክፈት ይችላሉ!`;
+
+  return {
+    success: true,
+    message: welcomeMsg,
+    user: updatedUser,
+    promoRequest,
+  };
+}
+
+/**
+ * Claim 1-Time 50 Launch Promo: 5 Cars Free for User.
+ * USER ONLY ENTERS PHONE AND PASSWORD.
+ * NO APPROVAL REQUIRED FOR USER - Access is granted instantly!
+ * If user passes autoUnlockPropertyId, that car is unlocked immediately!
+ * 1-Time Use Only! Next time user must pay money and upload screenshot.
+ */
+export function claimUserPromo5Cars(
+  phone: string,
+  pin: string,
+  autoUnlockPropertyId?: string,
+  _propertyPrice: number = 0,
+  _listingType?: string
+): { success: boolean; message: string; user?: UserAccount; promoRequest?: UnlockRequest } {
+  const cleanPhone = (phone || '').trim().replace(/[\s-]/g, '');
+  if (!cleanPhone || cleanPhone.length < 9) {
+    return { 
+      success: false, 
+      message: 'እባክዎ ትክክለኛ ስልክ ቁጥርዎን ያስገቡ (Please enter a valid phone number).' 
+    };
+  }
+
+  if (isPhoneBanned(cleanPhone)) {
+    return { 
+      success: false, 
+      message: 'ይህ ስልክ ቁጥር በደንብ መተላለፍ ምክንያት ታግዷል። (This phone number has been suspended).' 
+    };
+  }
+
+  const cleanPin = (pin || '').trim() || '1234';
+
+  const allUsers = getStoredUsers();
+  const allRequests = getStoredUnlockRequests();
+
+  // 1-Time Use Only check for cars
+  if (hasUserUsedCarPromo(cleanPhone, allUsers, allRequests)) {
+    return {
+      success: false,
+      message: 'ይህ ስልክ ቁጥር ቀደም ሲል የ1 ጊዜ የ5 መኪኖች ነፃ ዕድል (50 Car Promo) ተጠቅሟል። ለቀጣይ መኪኖች እባክዎ ክፍያ በመፈፀም ስክሪንሽት ያስገቡ። (This phone has already used the 1-time 5-car free promo. Next time, payment and screenshot are required).',
+    };
+  }
+
+  // Initial remaining unlocks: 5 cars
+  let remainingUnlocks = 5;
+  const unlockedIds: string[] = [];
+
+  // If user is currently unlocking a specific car right now, unlock it instantly!
+  if (autoUnlockPropertyId) {
+    unlockedIds.push(autoUnlockPropertyId);
+    remainingUnlocks = 4; // 1 used immediately, 4 remain!
+  }
+
+  const promoPackage: UserCreditPackage = {
+    id: `pkg-car-promo-${Date.now().toString(36)}`,
+    tierId: 'tier_car_promo',
+    tierName: '50 Car Promo (5 Free Cars)',
+    maxPrice: 999999999,
+    remainingUnlocks: remainingUnlocks,
+    totalPurchased: 5,
+    purchasedAt: new Date().toISOString(),
+    isPromo: true,
+    category: 'car',
+  };
+
+  let userIdx = allUsers.findIndex(u => u.phone.replace(/[\s-]/g, '') === cleanPhone);
+  let updatedUser: UserAccount;
+
+  if (userIdx >= 0) {
+    const existing = allUsers[userIdx];
+    const combinedUnlocked = Array.from(new Set([...(existing.unlockedPropertyIds || []), ...unlockedIds]));
+    updatedUser = {
+      ...existing,
+      pin: cleanPin,
+      unlockedPropertyIds: combinedUnlocked,
+      hasUsedCarPromo: true,
+      carPromoClaimedAt: new Date().toISOString(),
+      packages: [promoPackage, ...(existing.packages || [])],
+    };
+    allUsers[userIdx] = updatedUser;
+  } else {
+    updatedUser = {
+      id: `usr-${Date.now().toString(36)}`,
+      name: 'Car Promo User',
+      phone: cleanPhone,
+      pin: cleanPin,
+      createdAt: new Date().toISOString(),
+      unlockedPropertyIds: unlockedIds,
+      packages: [promoPackage],
+      hasUsedCarPromo: true,
+      carPromoClaimedAt: new Date().toISOString(),
+    };
+    allUsers.unshift(updatedUser);
+  }
+
+  saveUsers(allUsers);
+  saveActiveUserSession(updatedUser);
+
+  try {
+    localStorage.setItem(`car_promo_claimed_${cleanPhone}`, 'true');
+  } catch {
+    // ignore
+  }
+
+  // Create auto-approved promo unlock request for tracking in 50 countdown
+  const promoRequest: UnlockRequest = {
+    id: `req-car-promo-${Date.now().toString(36)}`,
+    type: 'package_purchase',
+    requestType: 'package_purchase',
+    packageTierId: 'tier_car_promo',
+    packageTierName: '50 Car Promo (5 Free Cars)',
+    buyerName: updatedUser.name || 'Car Promo User',
+    buyerPhone: cleanPhone,
+    paymentMethod: 'telebirr',
+    transactionRef: '50-CAR-PROMO-FREE',
+    screenshotUrl: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40"><text y="25" fill="#10b981" font-weight="bold">50-CAR-PROMO</text></svg>',
+    status: 'approved', // NO APPROVAL FOR USER - INSTANT ACCESS!
+    amountBirr: 0,
+    remainingUnlocks: remainingUnlocks,
+    propertyId: autoUnlockPropertyId,
+    createdAt: new Date().toISOString(),
+    approvedAt: new Date().toISOString(),
+    adminNote: '50 Car Launch Promo: 5 Free Cars (0 ETB - Auto-approved instantly with Phone & Password)',
+    isPromoFree: true,
+  };
+
+  saveUnlockRequests([promoRequest, ...allRequests]);
+
+  const welcomeMsg = autoUnlockPropertyId
+    ? `🎉 ተሳክቷል! የመኪናው ባለቤት ስልክ ወዲያውኑ ተከፍቷል። በተጨማሪም 4 ተጨማሪ መኪኖችን በነጻ መክፈት ይችላሉ!`
+    : `🎉 የ50 የመኪና ነፃ ዕድል ተከፍቷል! 5 መኪኖችን ያለ ምንም ክፍያ እና ያለምንም ፍቃድ መጠበቅ በነፃ መክፈት ይችላሉ!`;
 
   return {
     success: true,
@@ -1228,7 +1416,7 @@ export const SUPABASE_SQL_SCHEMA = `-- =========================================
 -- Run this in your Supabase SQL Editor
 -- =========================================================
 
--- 1. Create Properties Table
+-- 1. Create Properties Table (Homes, Cars & Machinery)
 CREATE TABLE IF NOT EXISTS public.properties (
   id TEXT PRIMARY KEY,
   category TEXT DEFAULT 'home',
@@ -1249,6 +1437,7 @@ CREATE TABLE IF NOT EXISTS public.properties (
   area_sq_meters NUMERIC,
   images JSONB NOT NULL DEFAULT '[]'::jsonb,
   national_id_front_url TEXT,
+  national_id_size_kb NUMERIC,
   owner_phone TEXT NOT NULL,
   owner_name TEXT NOT NULL,
   owner_pin TEXT NOT NULL,
@@ -1260,7 +1449,16 @@ CREATE TABLE IF NOT EXISTS public.properties (
   last_renewed_at TIMESTAMPTZ,
   view_count INTEGER DEFAULT 0,
   unlock_count INTEGER DEFAULT 0,
-  is_promo_free BOOLEAN DEFAULT false
+  is_promo_free BOOLEAN DEFAULT false,
+  -- Car & Vehicle Specific Columns
+  car_use_type TEXT,
+  car_type TEXT,
+  car_make TEXT,
+  car_model TEXT,
+  car_year INTEGER,
+  transmission TEXT,
+  fuel_type TEXT,
+  mileage_km NUMERIC
 );
 
 -- 2. Create Unlock Requests Table (5-House Package & Single Unlock screenshots)
@@ -1429,10 +1627,26 @@ ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS national_id_size_kb NUMER
 ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS seller_listing_fee_birr NUMERIC DEFAULT 0;
 ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS last_renewed_at TIMESTAMPTZ;
 
+-- Car Section columns (Ride & Transport, Personal Use, Specs)
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS car_use_type TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS car_type TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS car_make TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS car_model TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS car_year INTEGER;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS transmission TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS fuel_type TEXT;
+ALTER TABLE public.properties ADD COLUMN IF NOT EXISTS mileage_km NUMERIC;
+
+-- Indices for fast searching
+CREATE INDEX IF NOT EXISTS idx_properties_category ON public.properties(category);
+CREATE INDEX IF NOT EXISTS idx_properties_car_use_type ON public.properties(car_use_type);
+CREATE INDEX IF NOT EXISTS idx_properties_status ON public.properties(status);
+
 ALTER TABLE public.unlock_requests ALTER COLUMN screenshot_url DROP NOT NULL;
 ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS type TEXT DEFAULT 'single_unlock';
 ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS request_type TEXT DEFAULT 'single_unlock';
 ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ;
 ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS admin_note TEXT;
 ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS is_promo_free BOOLEAN DEFAULT false;
+ALTER TABLE public.unlock_requests ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'home';
 `;

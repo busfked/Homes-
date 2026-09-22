@@ -142,6 +142,15 @@ function mapPropertyRow(row: any): Property {
     viewCount: row.view_count || 0,
     unlockCount: row.unlock_count || 0,
     isPromoFree: Boolean(row.is_promo_free),
+    // Car specific fields
+    carUseType: row.car_use_type,
+    carType: row.car_type || (row.category === 'car' ? row.property_type : undefined),
+    carMake: row.car_make,
+    carModel: row.car_model,
+    carYear: row.car_year ? Number(row.car_year) : undefined,
+    transmission: row.transmission,
+    fuelType: row.fuel_type,
+    mileageKm: row.mileage_km ? Number(row.mileage_km) : undefined,
   };
 }
 
@@ -266,6 +275,15 @@ export async function savePropertyToSupabase(prop: Property): Promise<boolean> {
       view_count: prop.viewCount || 0,
       unlock_count: prop.unlockCount || 0,
       is_promo_free: Boolean(prop.isPromoFree),
+      // Car fields
+      car_use_type: prop.carUseType || null,
+      car_type: prop.carType || (prop.category === 'car' ? prop.propertyType : null),
+      car_make: prop.carMake || null,
+      car_model: prop.carModel || null,
+      car_year: prop.carYear ? Number(prop.carYear) : null,
+      transmission: prop.transmission || null,
+      fuel_type: prop.fuelType || null,
+      mileage_km: prop.mileageKm ? Number(prop.mileageKm) : null,
     };
 
     // Remove any undefined keys
